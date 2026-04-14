@@ -24,9 +24,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		B000C7902F8C7FF300D12277 /* test.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = test.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		B000C79D2F8C7FF400D12277 /* testTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = testTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		B000C7A72F8C7FF400D12277 /* testUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = testUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B000C7902F8C7FF300D12277 /* Looper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Looper.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B000C79D2F8C7FF400D12277 /* LooperTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LooperTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B000C7A72F8C7FF400D12277 /* LooperUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LooperUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -85,9 +85,9 @@
 		B000C7912F8C7FF300D12277 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				B000C7902F8C7FF300D12277 /* test.app */,
-				B000C79D2F8C7FF400D12277 /* testTests.xctest */,
-				B000C7A72F8C7FF400D12277 /* testUITests.xctest */,
+				B000C7902F8C7FF300D12277 /* Looper.app */,
+				B000C79D2F8C7FF400D12277 /* LooperTests.xctest */,
+				B000C7A72F8C7FF400D12277 /* LooperUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -95,9 +95,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		B000C78F2F8C7FF300D12277 /* test */ = {
+		B000C78F2F8C7FF300D12277 /* Looper */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = B000C7B12F8C7FF400D12277 /* Build configuration list for PBXNativeTarget "test" */;
+			buildConfigurationList = B000C7B12F8C7FF400D12277 /* Build configuration list for PBXNativeTarget "Looper" */;
 			buildPhases = (
 				B000C78C2F8C7FF300D12277 /* Sources */,
 				B000C78D2F8C7FF300D12277 /* Frameworks */,
@@ -110,16 +110,16 @@
 			fileSystemSynchronizedGroups = (
 				B000C7922F8C7FF300D12277 /* test */,
 			);
-			name = test;
+			name = Looper;
 			packageProductDependencies = (
 			);
 			productName = test;
-			productReference = B000C7902F8C7FF300D12277 /* test.app */;
+			productReference = B000C7902F8C7FF300D12277 /* Looper.app */;
 			productType = "com.apple.product-type.application";
 		};
-		B000C79C2F8C7FF400D12277 /* testTests */ = {
+		B000C79C2F8C7FF400D12277 /* LooperTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = B000C7B42F8C7FF400D12277 /* Build configuration list for PBXNativeTarget "testTests" */;
+			buildConfigurationList = B000C7B42F8C7FF400D12277 /* Build configuration list for PBXNativeTarget "LooperTests" */;
 			buildPhases = (
 				B000C7992F8C7FF400D12277 /* Sources */,
 				B000C79A2F8C7FF400D12277 /* Frameworks */,
@@ -133,16 +133,16 @@
 			fileSystemSynchronizedGroups = (
 				B000C7A02F8C7FF400D12277 /* testTests */,
 			);
-			name = testTests;
+			name = LooperTests;
 			packageProductDependencies = (
 			);
 			productName = testTests;
-			productReference = B000C79D2F8C7FF400D12277 /* testTests.xctest */;
+			productReference = B000C79D2F8C7FF400D12277 /* LooperTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		B000C7A62F8C7FF400D12277 /* testUITests */ = {
+		B000C7A62F8C7FF400D12277 /* LooperUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = B000C7B72F8C7FF400D12277 /* Build configuration list for PBXNativeTarget "testUITests" */;
+			buildConfigurationList = B000C7B72F8C7FF400D12277 /* Build configuration list for PBXNativeTarget "LooperUITests" */;
 			buildPhases = (
 				B000C7A32F8C7FF400D12277 /* Sources */,
 				B000C7A42F8C7FF400D12277 /* Frameworks */,
@@ -156,11 +156,11 @@
 			fileSystemSynchronizedGroups = (
 				B000C7AA2F8C7FF400D12277 /* testUITests */,
 			);
-			name = testUITests;
+			name = LooperUITests;
 			packageProductDependencies = (
 			);
 			productName = testUITests;
-			productReference = B000C7A72F8C7FF400D12277 /* testUITests.xctest */;
+			productReference = B000C7A72F8C7FF400D12277 /* LooperUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -186,7 +186,7 @@
 					};
 				};
 			};
-			buildConfigurationList = B000C78B2F8C7FF300D12277 /* Build configuration list for PBXProject "test" */;
+			buildConfigurationList = B000C78B2F8C7FF300D12277 /* Build configuration list for PBXProject "Looper" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -200,9 +200,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				B000C78F2F8C7FF300D12277 /* test */,
-				B000C79C2F8C7FF400D12277 /* testTests */,
-				B000C7A62F8C7FF400D12277 /* testUITests */,
+				B000C78F2F8C7FF300D12277 /* Looper */,
+				B000C79C2F8C7FF400D12277 /* LooperTests */,
+				B000C7A62F8C7FF400D12277 /* LooperUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -258,12 +258,12 @@
 /* Begin PBXTargetDependency section */
 		B000C79F2F8C7FF400D12277 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = B000C78F2F8C7FF300D12277 /* test */;
+			target = B000C78F2F8C7FF300D12277 /* Looper */;
 			targetProxy = B000C79E2F8C7FF400D12277 /* PBXContainerItemProxy */;
 		};
 		B000C7A92F8C7FF400D12277 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = B000C78F2F8C7FF300D12277 /* test */;
+			target = B000C78F2F8C7FF300D12277 /* Looper */;
 			targetProxy = B000C7A82F8C7FF400D12277 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -494,7 +494,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/test.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/test";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Looper.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Looper";
 				XROS_DEPLOYMENT_TARGET = 26.4;
 			};
 			name = Debug;
@@ -520,7 +520,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/test.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/test";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Looper.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Looper";
 				XROS_DEPLOYMENT_TARGET = 26.4;
 			};
 			name = Release;
@@ -578,7 +578,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		B000C78B2F8C7FF300D12277 /* Build configuration list for PBXProject "test" */ = {
+		B000C78B2F8C7FF300D12277 /* Build configuration list for PBXProject "Looper" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				B000C7AF2F8C7FF400D12277 /* Debug */,
@@ -587,7 +587,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		B000C7B12F8C7FF400D12277 /* Build configuration list for PBXNativeTarget "test" */ = {
+		B000C7B12F8C7FF400D12277 /* Build configuration list for PBXNativeTarget "Looper" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				B000C7B22F8C7FF400D12277 /* Debug */,
@@ -596,7 +596,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		B000C7B42F8C7FF400D12277 /* Build configuration list for PBXNativeTarget "testTests" */ = {
+		B000C7B42F8C7FF400D12277 /* Build configuration list for PBXNativeTarget "LooperTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				B000C7B52F8C7FF400D12277 /* Debug */,
@@ -605,7 +605,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		B000C7B72F8C7FF400D12277 /* Build configuration list for PBXNativeTarget "testUITests" */ = {
+		B000C7B72F8C7FF400D12277 /* Build configuration list for PBXNativeTarget "LooperUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				B000C7B82F8C7FF400D12277 /* Debug */,
