@@ -7,6 +7,7 @@
 
 import AVFoundation
 import Observation
+import Speech
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -35,36 +36,37 @@ struct ContentView: View {
                             Spacer()
 
                             VStack(alignment: .trailing, spacing: 2) {
-                            Text("Current \(model.currentDecibelText)")
-                                .font(.caption2)
+                                Text("Current \(model.currentDecibelText)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+
+                                Button {
+                                    isSilenceControlPresented.toggle()
+                                } label: {
+                                    Text("\(Int(model.silenceThresholdDB)) dB or lower")
+                                        .font(.caption)
+                                }
+                                .buttonStyle(.borderless)
                                 .foregroundStyle(.secondary)
-
-                            Button {
-                                isSilenceControlPresented.toggle()
-                            } label: {
-                                Text("\(Int(model.silenceThresholdDB)) dB or lower")
-                                    .font(.caption)
+                                .disabled(!model.hasAudio)
+                                .popover(isPresented: $isSilenceControlPresented, arrowEdge: .top) {
+                                    silenceControlPanel
+                                        .presentationCompactAdaptation(.popover)
+                                }
                             }
-                            .buttonStyle(.borderless)
-                            .foregroundStyle(.secondary)
-                            .disabled(!model.hasAudio)
-                            .popover(isPresented: $isSilenceControlPresented, arrowEdge: .top) {
-                                silenceControlPanel
-                                    .presentationCompactAdaptation(.popover)
-                            }
-                        }
 
-                        if model.isAnalyzingAudio {
-                            ProgressView()
+                            if model.isAnalyzingAudio {
+                                ProgressView()
+                            }
                         }
                     }
-
+                    .overlay(alignment: .topLeading) {
                         if isRecentFilesPresented {
                             recentFilesPanel
                                 .offset(y: 30)
-                                .zIndex(2)
                         }
                     }
+                    .zIndex(10)
 
                     VStack(spacing: 0) {
                         WaveformView(model: model)
@@ -76,10 +78,12 @@ struct ContentView: View {
                     }
                     .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .zIndex(0)
 
                     HStack {
-                        Text("View: \(timeText(model.visibleStartTime)) - \(timeText(model.visibleEndTime))")
+                        Text("Playing: \(timeText(model.currentTime))/\(timeText(model.duration))")
                             .font(.caption)
+                            .monospacedDigit()
                             .foregroundStyle(.secondary)
 
                         Spacer()
@@ -90,19 +94,10 @@ struct ContentView: View {
                         .font(.caption)
                         .disabled(!model.hasAudio)
                     }
+
+                    subtitleView
                 }
 
-                VStack(spacing: 12) {
-                    HStack {
-                        Text(timeText(model.currentTime))
-                            .monospacedDigit()
-                        Spacer()
-                        Text(timeText(model.duration))
-                            .monospacedDigit()
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
 
                 VStack(spacing: 12) {
                     HStack {
@@ -165,18 +160,12 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("Loop range: \(timeText(model.loopStart)) - \(timeText(model.loopEnd))", systemImage: "repeat")
-                    Text("Move the A/B handles on the waveform to snap to nearby points at \(Int(model.silenceThresholdDB)) dB or lower.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Spacer()
+                loopHistorySection
+                    .frame(maxHeight: .infinity, alignment: .top)
             }
             .padding()
             .navigationTitle("Loop Player")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 Button {
                     isImporterPresented = true
@@ -189,8 +178,8 @@ struct ContentView: View {
             }
             .fileImporter(
                 isPresented: $isImporterPresented,
-                allowedContentTypes: [.mp3, .mpeg4Audio, .audio],
-                allowsMultipleSelection: false
+                allowedContentTypes: [.mp3, .mpeg4Audio, .audio, .plainText],
+                allowsMultipleSelection: true
             ) { result in
                 model.importAudio(from: result)
             }
@@ -206,10 +195,33 @@ struct ContentView: View {
     }
 
     private func timeText(_ time: TimeInterval) -> String {
-        let totalSeconds = max(Int(time.rounded()), 0)
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%02d:%02d", minutes, seconds)
+        let totalCentiseconds = max(Int((time * 100).rounded()), 0)
+        let hours = totalCentiseconds / 360_000
+        let minutes = (totalCentiseconds % 360_000) / 6_000
+        let seconds = (totalCentiseconds % 6_000) / 100
+        let centiseconds = totalCentiseconds % 100
+
+        if hours > 0 {
+            return String(format: "%d°%02d′%02d.%02d″", hours, minutes, seconds, centiseconds)
+        }
+
+        if minutes > 0 {
+            return String(format: "%d′%02d.%02d″", minutes, seconds, centiseconds)
+        }
+
+        return String(format: "%d.%02d″", seconds, centiseconds)
+    }
+
+    private var subtitleView: some View {
+        Text(model.subtitleDisplayText)
+            .font(.headline)
+            .lineLimit(2)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            .foregroundStyle(model.subtitleDisplayText.isEmpty ? .secondary : .primary)
     }
 
     private var silenceControlPanel: some View {
@@ -265,9 +277,76 @@ struct ContentView: View {
                 }
             }
         }
-        .frame(width: 240, alignment: .leading)
+        .frame(width: 300, alignment: .leading)
         .padding(10)
-        .background(.background, in: RoundedRectangle(cornerRadius: 0.2))
+        .background {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(.black)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(.gray.opacity(0.7), lineWidth: 2)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var loopHistorySection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Loop History", systemImage: "repeat")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if model.loopHistory.isEmpty {
+                Text("No loop ranges")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                ScrollView {
+                    VStack(spacing: 6) {
+                        ForEach(model.loopHistory) { item in
+                            loopHistoryRow(item)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func loopHistoryRow(_ item: LoopHistoryItem) -> some View {
+        let isActive = model.activeLoopHistoryID == item.id
+
+        return HStack(spacing: 8) {
+            Button {
+                model.playLoopHistory(item)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "play.fill")
+                        .foregroundStyle(isActive ? .white : .primary)
+                    Text("\(timeText(item.start)) - \(timeText(item.end))")
+                        .monospacedDigit()
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                model.removeLoopHistory(item)
+            } label: {
+                Image(systemName: "xmark")
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+        }
+        .font(.caption)
+        .foregroundStyle(isActive ? .white : .primary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(isActive ? .red.opacity(0.78) : .secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
     }
 
     private func repeatCountButton(_ option: RepeatOption) -> some View {
@@ -300,12 +379,19 @@ struct WaveformView: View {
                     drawWaveform(in: &context, size: canvasSize)
                 }
 
-                if model.hasLoopStartMarker && model.hasLoopEndMarker {
+                if model.hasLoopStartMarker || model.hasLoopEndMarker {
+                    let highlightStartX = model.hasLoopStartMarker ? clippedStartX : playX
+                    let highlightEndX = model.hasLoopEndMarker ? clippedEndX : playX
                     Rectangle()
-                        .fill(.blue.opacity(0.16))
-                        .frame(width: max(clippedEndX - clippedStartX, 0))
-                        .offset(x: clippedStartX)
+                        .fill(.blue.opacity(0.26))
+                        .frame(width: max(highlightEndX - highlightStartX, 0))
+                        .offset(x: highlightStartX)
                 }
+
+                Rectangle()
+                    .fill(.green)
+                    .frame(width: 2)
+                    .offset(x: playX)
 
                 if model.hasLoopStartMarker {
                     marker(x: startX, color: .blue, title: "A")
@@ -316,11 +402,6 @@ struct WaveformView: View {
                     marker(x: endX, color: .red, title: "B")
                         .gesture(handleDrag(isStart: false, width: size.width))
                 }
-
-                Rectangle()
-                    .fill(.green)
-                    .frame(width: 2)
-                    .offset(x: playX)
             }
             .contentShape(Rectangle())
             .gesture(
@@ -381,7 +462,7 @@ struct WaveformView: View {
         }
 
         let midY = size.height / 2
-        let visibleSamples = renderedSamplesForVisibleRange(from: samples, width: size.width)
+        let visibleSamples = renderedSamplesForVisibleRange(from: samples, width: size.width, prefersFastRender: isPinching)
         let stepX = size.width / CGFloat(max(visibleSamples.count - 1, 1))
         var path = Path()
 
@@ -404,9 +485,7 @@ struct WaveformView: View {
                 .frame(width: 26, height: 22)
                 .background(color, in: RoundedRectangle(cornerRadius: 6))
 
-            Rectangle()
-                .fill(color)
-                .frame(width: 3)
+            Spacer(minLength: 0)
         }
         .frame(width: 44)
         .offset(x: x - 22)
@@ -445,8 +524,8 @@ struct WaveformView: View {
         return min(max(Int(progress * Double(sampleCount - 1)), 0), sampleCount - 1)
     }
 
-    private func renderedSamplesForVisibleRange(from samples: [Float], width: CGFloat) -> [Float] {
-        let targetCount = max(Int(width * 2), 1)
+    private func renderedSamplesForVisibleRange(from samples: [Float], width: CGFloat, prefersFastRender: Bool) -> [Float] {
+        let targetCount = max(Int(width * (prefersFastRender ? 1 : 2)), 1)
         guard model.duration > 0, model.visibleDuration > 0 else { return [] }
 
         return (0..<targetCount).map { column in
@@ -456,6 +535,11 @@ struct WaveformView: View {
             let clippedEndTime = min(bucketEndTime, model.duration)
 
             guard clippedEndTime > clippedStartTime else { return 0 }
+
+            if prefersFastRender {
+                let midpoint = (clippedStartTime + clippedEndTime) / 2
+                return samples[sampleIndex(for: midpoint, sampleCount: samples.count)]
+            }
 
             let startIndex = sampleIndex(for: clippedStartTime, sampleCount: samples.count)
             let endIndex = sampleIndex(for: clippedEndTime, sampleCount: samples.count)
@@ -511,19 +595,6 @@ struct OverviewWaveformView: View {
                         .offset(x: loopStartX)
                 }
 
-                if model.hasLoopStartMarker {
-                    Rectangle()
-                        .fill(.blue)
-                        .frame(width: 2)
-                        .offset(x: loopStartX)
-                }
-
-                if model.hasLoopEndMarker {
-                    Rectangle()
-                        .fill(.red)
-                        .frame(width: 2)
-                        .offset(x: loopEndX)
-                }
             }
             .contentShape(Rectangle())
             .gesture(
@@ -633,6 +704,26 @@ struct EdgeMatchedRectangle: Shape {
     }
 }
 
+struct LoopHistoryItem: Identifiable, Equatable {
+    let id = UUID()
+    let start: TimeInterval
+    let end: TimeInterval
+}
+
+struct SubtitleSegment: Identifiable, Equatable, Sendable, Codable {
+    let id: UUID
+    let start: TimeInterval
+    let end: TimeInterval
+    let text: String
+
+    nonisolated init(id: UUID = UUID(), start: TimeInterval, end: TimeInterval, text: String) {
+        self.id = id
+        self.start = start
+        self.end = end
+        self.text = text
+    }
+}
+
 @Observable
 @MainActor
 final class LanguageRepeaterModel {
@@ -649,8 +740,14 @@ final class LanguageRepeaterModel {
     var hasLoopEndMarker = false
     var selectedRepeatOption: RepeatOption = .infinite
     var completedLoopCount = 0
+    var loopHistory: [LoopHistoryItem] = []
+    var activeLoopHistoryID: UUID?
+    var subtitleSegments: [SubtitleSegment] = []
+    var currentSubtitleText = ""
+    var hasSubtitleFile = false
     var isPlaying = false
     var isAnalyzingAudio = false
+    var isTranscribingSubtitles = false
     var errorMessage: String?
 
     var hasAudio: Bool {
@@ -671,6 +768,14 @@ final class LanguageRepeaterModel {
         }
 
         return "\(Int(sample.decibels.rounded())) dB"
+    }
+
+    var subtitleDisplayText: String {
+        if !currentSubtitleText.isEmpty {
+            return currentSubtitleText
+        }
+
+        return hasSubtitleFile ? "" : "No subtitles"
     }
 
     var recentAudioFiles: [URL] {
@@ -697,6 +802,8 @@ final class LanguageRepeaterModel {
     @ObservationIgnored private var player: AVAudioPlayer?
     @ObservationIgnored private var playbackTask: Task<Void, Never>?
     @ObservationIgnored private var analysisTask: Task<Void, Never>?
+    @ObservationIgnored private var transcriptionTask: SFSpeechRecognitionTask?
+    @ObservationIgnored private var pendingSubtitleSegments: [SubtitleSegment] = []
     @ObservationIgnored private var loadedAudioURL: URL?
     @ObservationIgnored private var amplitudeBySecond: [DecibelSample] = []
     @ObservationIgnored private var didAttemptLastAudioLoad = false
@@ -705,8 +812,10 @@ final class LanguageRepeaterModel {
 
     func importAudio(from result: Result<[URL], Error>) {
         do {
-            guard let selectedURL = try result.get().first else { return }
-            try loadAudio(from: selectedURL)
+            let selectedURLs = try result.get()
+            guard let audioURL = selectedURLs.first(where: { Self.isAudioFile($0) }) else { return }
+            let subtitleURL = selectedURLs.first(where: { Self.isSubtitleFile($0) })
+            try loadAudio(from: audioURL, subtitleURL: subtitleURL)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -770,18 +879,29 @@ final class LanguageRepeaterModel {
         }
     }
 
-    func loadAudio(from url: URL) throws {
+    func loadAudio(from url: URL, subtitleURL: URL? = nil) throws {
         stop()
         analysisTask?.cancel()
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
 
-        let canAccess = url.startAccessingSecurityScopedResource()
+        let canAccessAudio = url.startAccessingSecurityScopedResource()
+        let canAccessSubtitle = subtitleURL?.startAccessingSecurityScopedResource() ?? false
         defer {
-            if canAccess {
+            if canAccessAudio {
                 url.stopAccessingSecurityScopedResource()
+            }
+            if canAccessSubtitle {
+                subtitleURL?.stopAccessingSecurityScopedResource()
             }
         }
 
         let localURL = try localAudioURL(for: url)
+        if let subtitleURL {
+            try copySelectedSubtitle(subtitleURL, to: localURL)
+        } else {
+            try copySidecarSubtitleIfNeeded(from: url, to: localURL)
+        }
         try configureAudioSession()
 
         let player = try AVAudioPlayer(contentsOf: localURL)
@@ -799,12 +919,24 @@ final class LanguageRepeaterModel {
         hasLoopStartMarker = false
         hasLoopEndMarker = false
         completedLoopCount = 0
+        loopHistory = []
+        activeLoopHistoryID = nil
         let initialVisibleDuration = min(max(duration, 1), 30)
         visibleStartTime = -initialVisibleDuration / 2
         visibleEndTime = initialVisibleDuration / 2
         waveformSamples = []
         amplitudeBySecond = []
+        subtitleSegments = []
+        pendingSubtitleSegments = []
+        currentSubtitleText = ""
+        hasSubtitleFile = false
         isAnalyzingAudio = true
+        isTranscribingSubtitles = false
+        if let sidecarSubtitles = try? Self.loadSidecarSubtitles(for: localURL), !sidecarSubtitles.isEmpty {
+            subtitleSegments = sidecarSubtitles
+            hasSubtitleFile = true
+            refreshCurrentSubtitle(force: true)
+        }
 
         analysisTask = Task.detached(priority: .userInitiated) { [localURL] in
             do {
@@ -830,6 +962,117 @@ final class LanguageRepeaterModel {
                     self.errorMessage = error.localizedDescription
                 }
             }
+        }
+    }
+
+    private func transcribeEnglishSubtitles(for url: URL) {
+        if let cachedSubtitles = try? Self.loadCachedSubtitles(for: url), !cachedSubtitles.isEmpty {
+            subtitleSegments = cachedSubtitles
+            refreshCurrentSubtitle(force: true)
+            isTranscribingSubtitles = false
+            return
+        }
+
+        isTranscribingSubtitles = true
+
+        SFSpeechRecognizer.requestAuthorization { [weak self] status in
+            Task { @MainActor [weak self] in
+                guard let self, self.loadedAudioURL == url else { return }
+                guard status == .authorized else {
+                    self.isTranscribingSubtitles = false
+                    return
+                }
+                guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US")), recognizer.isAvailable else {
+                    self.isTranscribingSubtitles = false
+                    return
+                }
+
+                let request = SFSpeechURLRecognitionRequest(url: url)
+                request.shouldReportPartialResults = true
+
+                self.transcriptionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
+                    let subtitleSegments = result.map { Self.subtitleSegments(from: $0.bestTranscription.segments) } ?? []
+                    let isFinished = error != nil || result?.isFinal == true
+
+                    Task { @MainActor [weak self, subtitleSegments, isFinished] in
+                        guard let self, self.loadedAudioURL == url else { return }
+
+                        if !subtitleSegments.isEmpty {
+                            self.pendingSubtitleSegments = subtitleSegments
+                        }
+
+                        guard isFinished else { return }
+
+                        let finalSubtitles = subtitleSegments.isEmpty ? self.pendingSubtitleSegments : subtitleSegments
+                        if !finalSubtitles.isEmpty {
+                            self.subtitleSegments = finalSubtitles
+                            self.refreshCurrentSubtitle(force: true)
+                            try? Self.saveCachedSubtitles(finalSubtitles, for: url)
+                        }
+                        self.pendingSubtitleSegments = []
+                        self.isTranscribingSubtitles = false
+                        self.transcriptionTask = nil
+                    }
+                }
+            }
+        }
+    }
+
+    private func refreshCurrentSubtitle(force: Bool = false) {
+        if !force,
+           let currentSubtitle = subtitleSegments.first(where: { $0.text == currentSubtitleText }),
+           currentTime <= currentSubtitle.end {
+            return
+        }
+
+        if let subtitle = subtitleSegments.first(where: { currentTime >= $0.start && currentTime <= $0.end }) {
+            currentSubtitleText = subtitle.text
+        } else {
+            currentSubtitleText = ""
+        }
+    }
+
+    nonisolated private static func subtitleSegments(from segments: [SFTranscriptionSegment]) -> [SubtitleSegment] {
+        var subtitles: [SubtitleSegment] = []
+        var currentWords: [String] = []
+        var currentStart: TimeInterval?
+        var previousEnd: TimeInterval = 0
+
+        func appendCurrentSubtitle() {
+            guard let currentStart, !currentWords.isEmpty else { return }
+            let text = currentWords.joined(separator: " ")
+            subtitles.append(SubtitleSegment(start: currentStart, end: max(previousEnd, currentStart + 1.2), text: text))
+            currentWords.removeAll()
+        }
+
+        for segment in segments {
+            let word = segment.substring.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !word.isEmpty else { continue }
+
+            let segmentStart = segment.timestamp
+            let segmentEnd = segment.timestamp + segment.duration
+            let currentTextLength = currentWords.joined(separator: " ").count
+            let shouldStartNewSubtitle = currentStart != nil && (segmentStart - previousEnd > 0.8 || currentTextLength + word.count > 58)
+
+            if shouldStartNewSubtitle {
+                appendCurrentSubtitle()
+                currentStart = segmentStart
+            } else if currentStart == nil {
+                currentStart = segmentStart
+            }
+
+            currentWords.append(word)
+            previousEnd = segmentEnd
+        }
+
+        appendCurrentSubtitle()
+        return subtitles.enumerated().map { index, subtitle in
+            let nextStart = subtitles.indices.contains(index + 1) ? subtitles[index + 1].start : subtitle.end
+            return SubtitleSegment(
+                start: subtitle.start,
+                end: max(subtitle.end, nextStart),
+                text: subtitle.text
+            )
         }
     }
 
@@ -860,16 +1103,32 @@ final class LanguageRepeaterModel {
     func stop() {
         playbackTask?.cancel()
         player?.stop()
-        player?.currentTime = 0
-        currentTime = 0
+        let stopTime = preferredStopTime()
+        player?.currentTime = stopTime
+        currentTime = stopTime
+        refreshCurrentSubtitle(force: true)
+        centerVisibleRange(on: stopTime)
         completedLoopCount = 0
         isPlaying = false
+    }
+
+    private func preferredStopTime() -> TimeInterval {
+        if hasLoopStartMarker {
+            return loopStart
+        }
+
+        if hasLoopEndMarker {
+            return loopEnd
+        }
+
+        return 0
     }
 
     func seek(to time: TimeInterval) {
         let nextTime = min(max(time, 0), duration)
         player?.currentTime = nextTime
         currentTime = nextTime
+        refreshCurrentSubtitle(force: true)
         centerVisibleRange(on: nextTime)
     }
 
@@ -884,6 +1143,7 @@ final class LanguageRepeaterModel {
             completedLoopCount = 0
         } else {
             setLoopStart(currentTime)
+            recordCurrentLoopRangeIfComplete()
         }
     }
 
@@ -893,13 +1153,50 @@ final class LanguageRepeaterModel {
             completedLoopCount = 0
         } else {
             setLoopEnd(currentTime)
+            recordCurrentLoopRangeIfComplete()
         }
     }
 
     func clearLoopMarkers() {
         hasLoopStartMarker = false
         hasLoopEndMarker = false
+        activeLoopHistoryID = nil
         completedLoopCount = 0
+    }
+
+    func playLoopHistory(_ item: LoopHistoryItem) {
+        guard let player else { return }
+        loopStart = item.start
+        loopEnd = item.end
+        hasLoopStartMarker = true
+        hasLoopEndMarker = true
+        activeLoopHistoryID = item.id
+        completedLoopCount = 0
+        player.currentTime = item.start
+        currentTime = item.start
+        refreshCurrentSubtitle(force: true)
+        centerVisibleRange(on: item.start)
+        player.play()
+        isPlaying = true
+        startPlaybackMonitor()
+    }
+
+    func removeLoopHistory(_ item: LoopHistoryItem) {
+        loopHistory.removeAll { $0.id == item.id }
+        if activeLoopHistoryID == item.id {
+            activeLoopHistoryID = nil
+        }
+    }
+
+    private func recordCurrentLoopRangeIfComplete() {
+        guard hasLoopStartMarker, hasLoopEndMarker, loopEnd > loopStart else { return }
+        let roundedStart = (loopStart * 10).rounded() / 10
+        let roundedEnd = (loopEnd * 10).rounded() / 10
+
+        loopHistory.removeAll { existing in
+            abs(existing.start - roundedStart) < 0.1 && abs(existing.end - roundedEnd) < 0.1
+        }
+        loopHistory.insert(LoopHistoryItem(start: roundedStart, end: roundedEnd), at: 0)
     }
 
     func setLoopStart(_ time: TimeInterval) {
@@ -1030,6 +1327,177 @@ final class LanguageRepeaterModel {
         return destinationURL
     }
 
+    nonisolated private static func isAudioFile(_ url: URL) -> Bool {
+        ["mp3", "m4a"].contains(url.pathExtension.lowercased())
+    }
+
+    nonisolated private static func isSubtitleFile(_ url: URL) -> Bool {
+        ["srt", "vtt"].contains(url.pathExtension.lowercased())
+    }
+
+    private func copySelectedSubtitle(_ subtitleURL: URL, to audioURL: URL) throws {
+        let fileManager = FileManager.default
+        let audioDirectoryURL = audioURL.deletingLastPathComponent()
+
+        if !fileManager.fileExists(atPath: audioDirectoryURL.path) {
+            try fileManager.createDirectory(at: audioDirectoryURL, withIntermediateDirectories: true)
+        }
+
+        for fileExtension in ["srt", "vtt"] {
+            let existingURL = audioURL.deletingPathExtension().appendingPathExtension(fileExtension)
+            if fileManager.fileExists(atPath: existingURL.path) {
+                try fileManager.removeItem(at: existingURL)
+            }
+        }
+
+        let destinationSubtitleURL = audioURL
+            .deletingPathExtension()
+            .appendingPathExtension(subtitleURL.pathExtension.lowercased())
+        guard subtitleURL.standardizedFileURL.path != destinationSubtitleURL.standardizedFileURL.path else { return }
+        try fileManager.copyItem(at: subtitleURL, to: destinationSubtitleURL)
+    }
+
+    private func copySidecarSubtitleIfNeeded(from sourceURL: URL, to audioURL: URL) throws {
+        let fileManager = FileManager.default
+        let audioDirectoryURL = audioURL.deletingLastPathComponent()
+        guard let sourceSubtitleURL = Self.sidecarSubtitleURL(for: sourceURL) else { return }
+
+        if !fileManager.fileExists(atPath: audioDirectoryURL.path) {
+            try fileManager.createDirectory(at: audioDirectoryURL, withIntermediateDirectories: true)
+        }
+
+        let destinationSubtitleURL = audioURL
+            .deletingPathExtension()
+            .appendingPathExtension(sourceSubtitleURL.pathExtension.lowercased())
+        guard sourceSubtitleURL.standardizedFileURL.path != destinationSubtitleURL.standardizedFileURL.path else { return }
+        if fileManager.fileExists(atPath: destinationSubtitleURL.path) {
+            try fileManager.removeItem(at: destinationSubtitleURL)
+        }
+        try fileManager.copyItem(at: sourceSubtitleURL, to: destinationSubtitleURL)
+    }
+
+    nonisolated private static func loadSidecarSubtitles(for audioURL: URL) throws -> [SubtitleSegment]? {
+        guard let subtitleURL = sidecarSubtitleURL(for: audioURL) else { return nil }
+        let content = try String(contentsOf: subtitleURL, encoding: .utf8)
+        let subtitles = parseSubtitleContent(content, fileExtension: subtitleURL.pathExtension)
+        return subtitles.isEmpty ? nil : subtitles
+    }
+
+    nonisolated private static func sidecarSubtitleURL(for audioURL: URL) -> URL? {
+        let directoryURL = audioURL.deletingLastPathComponent()
+        let baseName = audioURL.deletingPathExtension().lastPathComponent.lowercased()
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+
+        return urls.first { url in
+            let extensionName = url.pathExtension.lowercased()
+            return ["vtt", "srt"].contains(extensionName)
+                && url.deletingPathExtension().lastPathComponent.lowercased() == baseName
+        }
+    }
+
+    nonisolated private static func parseSubtitleContent(_ content: String, fileExtension: String) -> [SubtitleSegment] {
+        let lines = content
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+        var subtitles: [SubtitleSegment] = []
+        var index = 0
+
+        while index < lines.count {
+            let line = lines[index]
+            guard line.contains("-->") else {
+                index += 1
+                continue
+            }
+
+            let timingParts = line.components(separatedBy: "-->")
+            guard timingParts.count == 2,
+                  let start = subtitleTime(from: timingParts[0]),
+                  let end = subtitleTime(from: timingParts[1]),
+                  end > start else {
+                index += 1
+                continue
+            }
+
+            index += 1
+            var textLines: [String] = []
+
+            while index < lines.count {
+                let textLine = lines[index]
+                if textLine.contains("-->") {
+                    break
+                }
+
+                if textLine.isEmpty {
+                    index += 1
+                    if !textLines.isEmpty {
+                        break
+                    }
+                    continue
+                }
+
+                if textLine.uppercased().hasPrefix("WEBVTT") || textLine.allSatisfy(\.isNumber) {
+                    index += 1
+                    continue
+                }
+
+                textLines.append(textLine)
+                index += 1
+            }
+
+            let text = textLines
+                .joined(separator: " ")
+                .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if !text.isEmpty {
+                subtitles.append(SubtitleSegment(start: start, end: end, text: text))
+            }
+        }
+
+        return subtitles.sorted { $0.start < $1.start }
+    }
+
+    nonisolated private static func subtitleTime(from rawValue: String) -> TimeInterval? {
+        let timePart = rawValue
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: " ")
+            .first?
+            .replacingOccurrences(of: ",", with: ".")
+        guard let timePart else { return nil }
+
+        let pieces = timePart.split(separator: ":").map(String.init)
+        guard pieces.count == 2 || pieces.count == 3 else { return nil }
+
+        let hours: Double
+        let minutes: Double
+        let seconds: Double
+
+        if pieces.count == 3 {
+            guard let parsedHours = Double(pieces[0]),
+                  let parsedMinutes = Double(pieces[1]),
+                  let parsedSeconds = Double(pieces[2]) else { return nil }
+            hours = parsedHours
+            minutes = parsedMinutes
+            seconds = parsedSeconds
+        } else {
+            guard let parsedMinutes = Double(pieces[0]),
+                  let parsedSeconds = Double(pieces[1]) else { return nil }
+            hours = 0
+            minutes = parsedMinutes
+            seconds = parsedSeconds
+        }
+
+        return hours * 3_600 + minutes * 60 + seconds
+    }
+
     private func audioDirectoryURL() throws -> URL {
         let documentsURL = try FileManager.default.url(
             for: .documentDirectory,
@@ -1046,6 +1514,25 @@ final class LanguageRepeaterModel {
         guard let data = try? Data(contentsOf: cacheURL) else { return nil }
 
         return decodeCachedAnalysis(from: data)
+    }
+
+    nonisolated private static func loadCachedSubtitles(for url: URL) throws -> [SubtitleSegment]? {
+        let cacheURL = try subtitlesCacheURL(for: url)
+        guard FileManager.default.fileExists(atPath: cacheURL.path) else { return nil }
+        let data = try Data(contentsOf: cacheURL)
+        return try JSONDecoder().decode([SubtitleSegment].self, from: data)
+    }
+
+    nonisolated private static func saveCachedSubtitles(_ subtitles: [SubtitleSegment], for url: URL) throws {
+        let cacheURL = try subtitlesCacheURL(for: url)
+        let cacheDirectoryURL = cacheURL.deletingLastPathComponent()
+
+        if !FileManager.default.fileExists(atPath: cacheDirectoryURL.path) {
+            try FileManager.default.createDirectory(at: cacheDirectoryURL, withIntermediateDirectories: true)
+        }
+
+        let data = try JSONEncoder().encode(subtitles)
+        try data.write(to: cacheURL, options: [.atomic])
     }
 
     nonisolated private static func saveCachedAnalysis(_ analysis: WaveformAnalysis, for url: URL) throws {
@@ -1145,13 +1632,21 @@ final class LanguageRepeaterModel {
     }
 
     nonisolated private static func analysisCacheURL(for url: URL) throws -> URL {
+        try cacheURL(for: url, directoryName: "AnalysisCache")
+    }
+
+    nonisolated private static func subtitlesCacheURL(for url: URL) throws -> URL {
+        try cacheURL(for: url, directoryName: "SubtitlesCache")
+    }
+
+    nonisolated private static func cacheURL(for url: URL, directoryName: String) throws -> URL {
         let documentsURL = try FileManager.default.url(
             for: .documentDirectory,
             in: .userDomainMask,
             appropriateFor: nil,
             create: true
         )
-        let cacheDirectoryURL = documentsURL.appendingPathComponent("AnalysisCache", isDirectory: true)
+        let cacheDirectoryURL = documentsURL.appendingPathComponent(directoryName, isDirectory: true)
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
         let modifiedAt = ((attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0).rounded()
@@ -1257,6 +1752,11 @@ final class LanguageRepeaterModel {
     }
 
     private func nearestQuietTime(to time: TimeInterval) -> TimeInterval {
+        if let currentSample = amplitudeBySecond.min(by: { abs($0.time - time) < abs($1.time - time) }),
+           currentSample.decibels <= silenceThresholdDB {
+            return time
+        }
+
         let quietSamples = amplitudeBySecond.filter { $0.decibels <= silenceThresholdDB }
         guard let nearest = quietSamples.min(by: { abs($0.time - time) < abs($1.time - time) }) else {
             return time
@@ -1274,6 +1774,7 @@ final class LanguageRepeaterModel {
 
                 await MainActor.run {
                     self.currentTime = player.currentTime
+                    self.refreshCurrentSubtitle()
                     self.centerVisibleRange(on: self.currentTime)
 
                     if self.hasLoopEndMarker && player.currentTime >= self.loopEnd {
@@ -1281,6 +1782,7 @@ final class LanguageRepeaterModel {
                             player.pause()
                             player.currentTime = self.loopEnd
                             self.currentTime = self.loopEnd
+                            self.refreshCurrentSubtitle(force: true)
                             self.isPlaying = false
                             self.playbackTask?.cancel()
                             return
@@ -1293,6 +1795,7 @@ final class LanguageRepeaterModel {
                             player.pause()
                             player.currentTime = self.loopEnd
                             self.currentTime = self.loopEnd
+                            self.refreshCurrentSubtitle(force: true)
                             self.isPlaying = false
                             self.playbackTask?.cancel()
                             return
@@ -1300,6 +1803,7 @@ final class LanguageRepeaterModel {
 
                         player.currentTime = self.loopStart
                         self.currentTime = self.loopStart
+                        self.refreshCurrentSubtitle(force: true)
                         self.centerVisibleRange(on: self.currentTime)
 
                         if self.isPlaying {
