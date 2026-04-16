@@ -30,19 +30,19 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		B000C7922F8C7FF300D12277 /* test */ = {
+		B000C7922F8C7FF300D12277 /* looper */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = test;
+			path = looper;
 			sourceTree = "<group>";
 		};
-		B000C7A02F8C7FF400D12277 /* testTests */ = {
+		B000C7A02F8C7FF400D12277 /* LooperTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = testTests;
+			path = LooperTests;
 			sourceTree = "<group>";
 		};
-		B000C7AA2F8C7FF400D12277 /* testUITests */ = {
+		B000C7AA2F8C7FF400D12277 /* LooperUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = testUITests;
+			path = LooperUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -75,9 +75,9 @@
 		B000C7872F8C7FF300D12277 = {
 			isa = PBXGroup;
 			children = (
-				B000C7922F8C7FF300D12277 /* test */,
-				B000C7A02F8C7FF400D12277 /* testTests */,
-				B000C7AA2F8C7FF400D12277 /* testUITests */,
+				B000C7922F8C7FF300D12277 /* looper */,
+				B000C7A02F8C7FF400D12277 /* LooperTests */,
+				B000C7AA2F8C7FF400D12277 /* LooperUITests */,
 				B000C7912F8C7FF300D12277 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -108,7 +108,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				B000C7922F8C7FF300D12277 /* test */,
+				B000C7922F8C7FF300D12277 /* looper */,
 			);
 			name = Looper;
 			packageProductDependencies = (
@@ -131,7 +131,7 @@
 				B000C79F2F8C7FF400D12277 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				B000C7A02F8C7FF400D12277 /* testTests */,
+				B000C7A02F8C7FF400D12277 /* LooperTests */,
 			);
 			name = LooperTests;
 			packageProductDependencies = (
@@ -154,7 +154,7 @@
 				B000C7A92F8C7FF400D12277 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				B000C7AA2F8C7FF400D12277 /* testUITests */,
+				B000C7AA2F8C7FF400D12277 /* LooperUITests */,
 			);
 			name = LooperUITests;
 			packageProductDependencies = (

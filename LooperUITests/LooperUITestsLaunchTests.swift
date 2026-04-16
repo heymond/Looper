@@ -1,13 +1,13 @@
 //
-//  testUITestsLaunchTests.swift
-//  testUITests
+//  LooperUITestsLaunchTests.swift
+//  LooperUITests
 //
 //  Created by Jinyoung Kim on 4/13/26.
 //
 
 import XCTest
 
-final class testUITestsLaunchTests: XCTestCase {
+final class LooperUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true

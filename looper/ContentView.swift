@@ -1,6 +1,6 @@
 //
 //  ContentView.swift
-//  test
+//  Looper
 //
 //  Created by Jinyoung Kim on 4/13/26.
 //
@@ -9,6 +9,7 @@ import AVFoundation
 import Observation
 import Speech
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 struct ContentView: View {
@@ -60,12 +61,6 @@ struct ContentView: View {
                             }
                         }
                     }
-                    .overlay(alignment: .topLeading) {
-                        if isRecentFilesPresented {
-                            recentFilesPanel
-                                .offset(y: 30)
-                        }
-                    }
                     .zIndex(10)
 
                     VStack(spacing: 0) {
@@ -88,8 +83,8 @@ struct ContentView: View {
 
                         Spacer()
 
-                        Button("Show All") {
-                            model.resetZoom()
+                        Button("Default") {
+                            model.resetToDefaultZoom()
                         }
                         .font(.caption)
                         .disabled(!model.hasAudio)
@@ -115,6 +110,7 @@ struct ContentView: View {
                             }
                             .buttonStyle(.bordered)
                             .tint(model.hasLoopEndMarker ? .red : .gray)
+                            .disabled(!model.hasLoopStartMarker)
 
                             Button {
                                 model.clearLoopMarkers()
@@ -155,7 +151,8 @@ struct ContentView: View {
                         Label("Stop", systemImage: "stop.fill")
                             .frame(width: 110)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.borderedProminent)
+                    .tint(model.isPlaying ? .red : .gray)
                     .disabled(!model.hasAudio)
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -164,6 +161,24 @@ struct ContentView: View {
                     .frame(maxHeight: .infinity, alignment: .top)
             }
             .padding()
+            .overlay(alignment: .topLeading) {
+                if isRecentFilesPresented {
+                    ZStack(alignment: .topLeading) {
+                        Color.black.opacity(0.001)
+                            .ignoresSafeArea()
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                isRecentFilesPresented = false
+                            }
+
+                        recentFilesPanel
+                            .padding(.leading)
+                            .offset(y: 46)
+                            .onTapGesture { }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
+            }
             .navigationTitle("Loop Player")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -176,12 +191,14 @@ struct ContentView: View {
             .task {
                 model.loadLastAudioIfNeeded()
             }
-            .fileImporter(
-                isPresented: $isImporterPresented,
-                allowedContentTypes: [.mp3, .mpeg4Audio, .audio, .plainText],
-                allowsMultipleSelection: true
-            ) { result in
-                model.importAudio(from: result)
+            .sheet(isPresented: $isImporterPresented) {
+                AudioDocumentPicker(
+                    isPresented: $isImporterPresented,
+                    initialDirectoryURL: model.lastOpenedDirectoryURL,
+                    onPick: { result in
+                        model.importAudio(from: result)
+                    }
+                )
             }
             .alert("Audio Error", isPresented: Binding(
                 get: { model.errorMessage != nil },
@@ -225,26 +242,67 @@ struct ContentView: View {
     }
 
     private var silenceControlPanel: some View {
-        HStack(spacing: 10) {
-            TextField(
-                "dB",
-                value: Binding(
-                    get: { model.silenceThresholdDB },
-                    set: { model.silenceThresholdDB = min(max($0, -60), -15) }
-                ),
-                format: .number.precision(.fractionLength(0))
-            )
-            .keyboardType(.numbersAndPunctuation)
-            .multilineTextAlignment(.trailing)
-            .textFieldStyle(.roundedBorder)
-            .frame(width: 66)
+        VStack(alignment: .trailing, spacing: 10) {
+            HStack(spacing: 10) {
+                Text("Threshold")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-            Slider(value: $model.silenceThresholdDB, in: -60 ... -15, step: 1)
+                TextField(
+                    "dB",
+                    value: Binding(
+                        get: { model.silenceThresholdDB },
+                        set: { model.silenceThresholdDB = min(max($0, -60), -15) }
+                    ),
+                    format: .number.precision(.fractionLength(0))
+                )
+                .keyboardType(.numbersAndPunctuation)
+                .multilineTextAlignment(.trailing)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 66)
+
+                Slider(value: $model.silenceThresholdDB, in: -60 ... -15, step: 1)
+                    .frame(width: 120)
+
+                Text("dB")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, alignment: .leading)
+            }
+
+            HStack(spacing: 10) {
+                Text("Silence Time")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                TextField(
+                    "ms",
+                    value: Binding(
+                        get: { model.silenceWindowMilliseconds },
+                        set: { model.updateSilenceWindowMilliseconds($0) }
+                    ),
+                    format: .number.precision(.fractionLength(0))
+                )
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.trailing)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 66)
+
+                Slider(
+                    value: Binding(
+                        get: { model.silenceWindowMilliseconds },
+                        set: { model.updateSilenceWindowMilliseconds($0) }
+                    ),
+                    in: 30 ... 500,
+                    step: 10
+                )
                 .frame(width: 120)
 
-            Text("dB")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Text("ms")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, alignment: .leading)
+            }
         }
         .padding(8)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -464,17 +522,18 @@ struct WaveformView: View {
         let midY = size.height / 2
         let visibleSamples = renderedSamplesForVisibleRange(from: samples, width: size.width, prefersFastRender: isPinching)
         let stepX = size.width / CGFloat(max(visibleSamples.count - 1, 1))
+        let lineWidth = min(0.45, max(stepX * 0.25, 0.2))
         var path = Path()
 
         for index in visibleSamples.indices {
             let x = CGFloat(index) * stepX
             let amplitude = CGFloat(visibleSamples[index])
-            let height = max(amplitude * midY * 0.92, 1)
+            let height = max(amplitude * midY * 0.92, 0.5)
             path.move(to: CGPoint(x: x, y: midY - height))
             path.addLine(to: CGPoint(x: x, y: midY + height))
         }
 
-        context.stroke(path, with: .color(.primary.opacity(0.74)), lineWidth: 1)
+        context.stroke(path, with: .color(.primary.opacity(1)), lineWidth: lineWidth)
     }
 
     private func marker(x: CGFloat, color: Color, title: String) -> some View {
@@ -525,7 +584,8 @@ struct WaveformView: View {
     }
 
     private func renderedSamplesForVisibleRange(from samples: [Float], width: CGFloat, prefersFastRender: Bool) -> [Float] {
-        let targetCount = max(Int(width * (prefersFastRender ? 1 : 2)), 1)
+        let minimumBarSpacing: CGFloat = 1.5
+        let targetCount = max(Int(width / minimumBarSpacing), 1)
         guard model.duration > 0, model.visibleDuration > 0 else { return [] }
 
         return (0..<targetCount).map { column in
@@ -535,11 +595,6 @@ struct WaveformView: View {
             let clippedEndTime = min(bucketEndTime, model.duration)
 
             guard clippedEndTime > clippedStartTime else { return 0 }
-
-            if prefersFastRender {
-                let midpoint = (clippedStartTime + clippedEndTime) / 2
-                return samples[sampleIndex(for: midpoint, sampleCount: samples.count)]
-            }
 
             let startIndex = sampleIndex(for: clippedStartTime, sampleCount: samples.count)
             let endIndex = sampleIndex(for: clippedEndTime, sampleCount: samples.count)
@@ -650,7 +705,7 @@ struct OverviewWaveformView: View {
             var peak: Float = 0
 
             for index in bucketStart...max(bucketStart, bucketEnd) {
-                peak = max(peak, samples[index])
+                peak = max(peak, abs(samples[index]))
             }
 
             return peak
@@ -666,6 +721,53 @@ struct OverviewWaveformView: View {
         guard width > 0 else { return 0 }
         let progress = min(max(x / width, 0), 1)
         return model.duration * TimeInterval(progress)
+    }
+}
+
+private extension UTType {
+    static let srtSubtitle = UTType(filenameExtension: "srt", conformingTo: .plainText) ?? .plainText
+    static let webVTTSubtitle = UTType(filenameExtension: "vtt", conformingTo: .plainText) ?? .plainText
+}
+
+struct AudioDocumentPicker: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    let initialDirectoryURL: URL?
+    let onPick: (Result<[URL], Error>) -> Void
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(
+            forOpeningContentTypes: [.mp3, .mpeg4Audio, .audio, .srtSubtitle, .webVTTSubtitle],
+            asCopy: false
+        )
+        picker.allowsMultipleSelection = true
+        picker.directoryURL = initialDirectoryURL
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) { }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isPresented: $isPresented, onPick: onPick)
+    }
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        @Binding private var isPresented: Bool
+        private let onPick: (Result<[URL], Error>) -> Void
+
+        init(isPresented: Binding<Bool>, onPick: @escaping (Result<[URL], Error>) -> Void) {
+            _isPresented = isPresented
+            self.onPick = onPick
+        }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            isPresented = false
+            onPick(.success(urls))
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            isPresented = false
+        }
     }
 }
 
@@ -735,7 +837,8 @@ final class LanguageRepeaterModel {
     var loopEnd: TimeInterval = 0
     var visibleStartTime: TimeInterval = 0
     var visibleEndTime: TimeInterval = 0
-    var silenceThresholdDB: Double = -35
+    var silenceThresholdDB: Double = -50
+    var silenceWindowMilliseconds: Double = 30
     var hasLoopStartMarker = false
     var hasLoopEndMarker = false
     var selectedRepeatOption: RepeatOption = .infinite
@@ -762,6 +865,10 @@ final class LanguageRepeaterModel {
         duration > 0 && visibleDuration < duration * 0.98
     }
 
+    var defaultVisibleDuration: TimeInterval {
+        min(max(duration, 1), 20)
+    }
+
     var currentDecibelText: String {
         guard let sample = amplitudeBySecond.min(by: { abs($0.time - currentTime) < abs($1.time - currentTime) }) else {
             return "-- dB"
@@ -776,6 +883,15 @@ final class LanguageRepeaterModel {
         }
 
         return hasSubtitleFile ? "" : "No subtitles"
+    }
+
+    var lastOpenedDirectoryURL: URL? {
+        guard let path = UserDefaults.standard.string(forKey: lastOpenedDirectoryPathKey) else { return nil }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            return nil
+        }
+        return URL(fileURLWithPath: path, isDirectory: true)
     }
 
     var recentAudioFiles: [URL] {
@@ -806,14 +922,17 @@ final class LanguageRepeaterModel {
     @ObservationIgnored private var pendingSubtitleSegments: [SubtitleSegment] = []
     @ObservationIgnored private var loadedAudioURL: URL?
     @ObservationIgnored private var amplitudeBySecond: [DecibelSample] = []
+    @ObservationIgnored private var shouldClearEndMarkerAfterPlayback = false
     @ObservationIgnored private var didAttemptLastAudioLoad = false
     @ObservationIgnored private let lastAudioPathKey = "lastAudioPath"
     @ObservationIgnored private let lastAudioFileNameKey = "lastAudioFileName"
+    @ObservationIgnored private let lastOpenedDirectoryPathKey = "lastOpenedDirectoryPath"
 
     func importAudio(from result: Result<[URL], Error>) {
         do {
             let selectedURLs = try result.get()
             guard let audioURL = selectedURLs.first(where: { Self.isAudioFile($0) }) else { return }
+            saveLastOpenedDirectory(for: audioURL)
             let subtitleURL = selectedURLs.first(where: { Self.isSubtitleFile($0) })
             try loadAudio(from: audioURL, subtitleURL: subtitleURL)
         } catch {
@@ -827,6 +946,10 @@ final class LanguageRepeaterModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func saveLastOpenedDirectory(for url: URL) {
+        UserDefaults.standard.set(url.deletingLastPathComponent().path, forKey: lastOpenedDirectoryPathKey)
     }
 
     func loadLastAudioIfNeeded() {
@@ -918,10 +1041,11 @@ final class LanguageRepeaterModel {
         loopEnd = duration
         hasLoopStartMarker = false
         hasLoopEndMarker = false
+        shouldClearEndMarkerAfterPlayback = false
         completedLoopCount = 0
         loopHistory = []
         activeLoopHistoryID = nil
-        let initialVisibleDuration = min(max(duration, 1), 30)
+        let initialVisibleDuration = defaultVisibleDuration
         visibleStartTime = -initialVisibleDuration / 2
         visibleEndTime = initialVisibleDuration / 2
         waveformSamples = []
@@ -938,26 +1062,89 @@ final class LanguageRepeaterModel {
             refreshCurrentSubtitle(force: true)
         }
 
-        analysisTask = Task.detached(priority: .userInitiated) { [localURL] in
+        startWaveformAnalysis(for: localURL)
+    }
+
+    func updateSilenceWindowMilliseconds(_ value: Double) {
+        let nextValue = min(max(value, 30), 500)
+        guard silenceWindowMilliseconds != nextValue else { return }
+
+        silenceWindowMilliseconds = nextValue
+        guard let loadedAudioURL else { return }
+        isAnalyzingAudio = true
+        startWaveformAnalysis(for: loadedAudioURL)
+    }
+
+    private func startWaveformAnalysis(for localURL: URL) {
+        analysisTask?.cancel()
+        let windowMilliseconds = Int(silenceWindowMilliseconds.rounded())
+
+        analysisTask = Task.detached(priority: .userInitiated) { [localURL, windowMilliseconds] in
             do {
-                let analysis: WaveformAnalysis
-                if let cachedAnalysis = try Self.loadCachedAnalysis(for: localURL) {
-                    analysis = cachedAnalysis
-                } else {
-                    analysis = try Self.analyzeWaveform(from: localURL)
-                    try Self.saveCachedAnalysis(analysis, for: localURL)
+                try Task.checkCancellation()
+                if let cachedAnalysis = try Self.loadCachedAnalysis(for: localURL, windowMilliseconds: windowMilliseconds) {
+                    try Task.checkCancellation()
+                    await MainActor.run { [weak self] in
+                        guard let self,
+                              self.loadedAudioURL == localURL,
+                              Int(self.silenceWindowMilliseconds.rounded()) == windowMilliseconds else { return }
+                        self.waveformSamples = cachedAnalysis.waveformSamples
+                        self.amplitudeBySecond = cachedAnalysis.decibelSamples
+                        self.applyAutomaticLoopBounds()
+                        self.isAnalyzingAudio = false
+                    }
+                    return
                 }
 
+                let waveformSamples = try Self.analyzeWaveformSamples(from: localURL)
+                try Task.checkCancellation()
                 await MainActor.run { [weak self] in
-                    guard let self, self.loadedAudioURL == localURL else { return }
+                    guard let self,
+                          self.loadedAudioURL == localURL,
+                          Int(self.silenceWindowMilliseconds.rounded()) == windowMilliseconds else { return }
+                    self.waveformSamples = waveformSamples
+                    self.isAnalyzingAudio = true
+                }
+
+                let initialDecibelSamples = try Self.analyzeDecibelSamples(
+                    from: localURL,
+                    windowMilliseconds: windowMilliseconds,
+                    maximumDuration: 60
+                )
+                try Task.checkCancellation()
+                await MainActor.run { [weak self] in
+                    guard let self,
+                          self.loadedAudioURL == localURL,
+                          Int(self.silenceWindowMilliseconds.rounded()) == windowMilliseconds else { return }
+                    self.amplitudeBySecond = initialDecibelSamples
+                    self.isAnalyzingAudio = true
+                }
+
+                let decibelSamples = try Self.analyzeDecibelSamples(
+                    from: localURL,
+                    windowMilliseconds: windowMilliseconds
+                )
+                let analysis = WaveformAnalysis(waveformSamples: waveformSamples, decibelSamples: decibelSamples)
+                try Task.checkCancellation()
+                try Self.saveCachedAnalysis(analysis, for: localURL, windowMilliseconds: windowMilliseconds)
+
+                try Task.checkCancellation()
+                await MainActor.run { [weak self] in
+                    guard let self,
+                          self.loadedAudioURL == localURL,
+                          Int(self.silenceWindowMilliseconds.rounded()) == windowMilliseconds else { return }
                     self.waveformSamples = analysis.waveformSamples
                     self.amplitudeBySecond = analysis.decibelSamples
                     self.applyAutomaticLoopBounds()
                     self.isAnalyzingAudio = false
                 }
+            } catch is CancellationError {
+                return
             } catch {
                 await MainActor.run { [weak self] in
-                    guard let self, self.loadedAudioURL == localURL else { return }
+                    guard let self,
+                          self.loadedAudioURL == localURL,
+                          Int(self.silenceWindowMilliseconds.rounded()) == windowMilliseconds else { return }
                     self.isAnalyzingAudio = false
                     self.errorMessage = error.localizedDescription
                 }
@@ -1117,10 +1304,6 @@ final class LanguageRepeaterModel {
             return loopStart
         }
 
-        if hasLoopEndMarker {
-            return loopEnd
-        }
-
         return 0
     }
 
@@ -1137,22 +1320,42 @@ final class LanguageRepeaterModel {
         seek(to: centerTime)
     }
 
+    private func synchronizedCurrentTime() -> TimeInterval {
+        let nextTime = min(max(player?.currentTime ?? currentTime, 0), duration)
+        currentTime = nextTime
+        return nextTime
+    }
+
     func toggleStartMarkerAtCurrentTime() {
+        let markerTime = synchronizedCurrentTime()
+
         if hasLoopStartMarker {
             hasLoopStartMarker = false
+            activeLoopHistoryID = nil
             completedLoopCount = 0
+
+            if hasLoopEndMarker && isPlaying && markerTime < loopEnd {
+                shouldClearEndMarkerAfterPlayback = true
+            } else {
+                hasLoopEndMarker = false
+                shouldClearEndMarkerAfterPlayback = false
+            }
         } else {
-            setLoopStart(currentTime)
+            setLoopStart(markerTime)
             recordCurrentLoopRangeIfComplete()
         }
     }
 
     func toggleEndMarkerAtCurrentTime() {
+        guard hasLoopStartMarker else { return }
+        let markerTime = synchronizedCurrentTime()
+
         if hasLoopEndMarker {
             hasLoopEndMarker = false
+            shouldClearEndMarkerAfterPlayback = false
             completedLoopCount = 0
         } else {
-            setLoopEnd(currentTime)
+            setLoopEnd(markerTime)
             recordCurrentLoopRangeIfComplete()
         }
     }
@@ -1160,6 +1363,7 @@ final class LanguageRepeaterModel {
     func clearLoopMarkers() {
         hasLoopStartMarker = false
         hasLoopEndMarker = false
+        shouldClearEndMarkerAfterPlayback = false
         activeLoopHistoryID = nil
         completedLoopCount = 0
     }
@@ -1170,6 +1374,7 @@ final class LanguageRepeaterModel {
         loopEnd = item.end
         hasLoopStartMarker = true
         hasLoopEndMarker = true
+        shouldClearEndMarkerAfterPlayback = false
         activeLoopHistoryID = item.id
         completedLoopCount = 0
         player.currentTime = item.start
@@ -1200,9 +1405,11 @@ final class LanguageRepeaterModel {
     }
 
     func setLoopStart(_ time: TimeInterval) {
-        let snappedTime = nearestQuietTime(to: time)
-        loopStart = min(max(snappedTime, 0), max(loopEnd - 0.2, 0))
+        let snappedTime = quietTimeBeforeOrAt(time)
+        let maximumStart = hasLoopEndMarker ? max(loopEnd - 0.2, 0) : duration
+        loopStart = min(max(snappedTime, 0), maximumStart)
         hasLoopStartMarker = true
+        shouldClearEndMarkerAfterPlayback = false
         completedLoopCount = 0
 
         if currentTime < loopStart {
@@ -1211,9 +1418,10 @@ final class LanguageRepeaterModel {
     }
 
     func setLoopEnd(_ time: TimeInterval) {
-        let snappedTime = nearestQuietTime(to: time)
+        let snappedTime = quietTimeAfterOrAt(time)
         loopEnd = max(min(snappedTime, duration), min(loopStart + 0.2, duration))
         hasLoopEndMarker = true
+        shouldClearEndMarkerAfterPlayback = false
         completedLoopCount = 0
 
         if currentTime > loopEnd {
@@ -1221,9 +1429,8 @@ final class LanguageRepeaterModel {
         }
     }
 
-    func resetZoom() {
-        visibleStartTime = 0
-        visibleEndTime = duration
+    func resetToDefaultZoom() {
+        setVisibleRange(centeredOn: currentTime, span: defaultVisibleDuration)
     }
 
     func moveVisibleRangeCenter(to time: TimeInterval) {
@@ -1248,7 +1455,7 @@ final class LanguageRepeaterModel {
         guard duration > 0, magnification > 0 else { return }
 
         let startSpan = startRange.upperBound - startRange.lowerBound
-        let minimumSpan = min(max(duration / 120, 0.5), duration)
+        let minimumSpan = min(20, duration)
         let nextSpan = min(max(startSpan / TimeInterval(magnification), minimumSpan), duration)
         let center = (startRange.lowerBound + startRange.upperBound) / 2
         let halfSpan = nextSpan / 2
@@ -1284,10 +1491,14 @@ final class LanguageRepeaterModel {
     }
 
     private func centerVisibleRange(on time: TimeInterval) {
-        let span = visibleDuration
+        setVisibleRange(centeredOn: time, span: visibleDuration)
+    }
+
+    private func setVisibleRange(centeredOn time: TimeInterval, span: TimeInterval) {
         guard duration > 0, span > 0 else { return }
 
-        let halfSpan = span / 2
+        let clampedSpan = min(span, duration)
+        let halfSpan = clampedSpan / 2
         visibleStartTime = time - halfSpan
         visibleEndTime = time + halfSpan
     }
@@ -1508,8 +1719,8 @@ final class LanguageRepeaterModel {
         return documentsURL.appendingPathComponent("AudioFiles", isDirectory: true)
     }
 
-    nonisolated private static func loadCachedAnalysis(for url: URL) throws -> WaveformAnalysis? {
-        let cacheURL = try analysisCacheURL(for: url)
+    nonisolated private static func loadCachedAnalysis(for url: URL, windowMilliseconds: Int) throws -> WaveformAnalysis? {
+        let cacheURL = try analysisCacheURL(for: url, windowMilliseconds: windowMilliseconds)
         guard FileManager.default.fileExists(atPath: cacheURL.path) else { return nil }
         guard let data = try? Data(contentsOf: cacheURL) else { return nil }
 
@@ -1535,8 +1746,8 @@ final class LanguageRepeaterModel {
         try data.write(to: cacheURL, options: [.atomic])
     }
 
-    nonisolated private static func saveCachedAnalysis(_ analysis: WaveformAnalysis, for url: URL) throws {
-        let cacheURL = try analysisCacheURL(for: url)
+    nonisolated private static func saveCachedAnalysis(_ analysis: WaveformAnalysis, for url: URL, windowMilliseconds: Int) throws {
+        let cacheURL = try analysisCacheURL(for: url, windowMilliseconds: windowMilliseconds)
         let cacheDirectoryURL = cacheURL.deletingLastPathComponent()
 
         if !FileManager.default.fileExists(atPath: cacheDirectoryURL.path) {
@@ -1631,15 +1842,15 @@ final class LanguageRepeaterModel {
         return value
     }
 
-    nonisolated private static func analysisCacheURL(for url: URL) throws -> URL {
-        try cacheURL(for: url, directoryName: "AnalysisCache")
+    nonisolated private static func analysisCacheURL(for url: URL, windowMilliseconds: Int) throws -> URL {
+        try cacheURL(for: url, directoryName: "AnalysisCache", cacheVariant: "analysis-v6-window-\(windowMilliseconds)ms")
     }
 
     nonisolated private static func subtitlesCacheURL(for url: URL) throws -> URL {
         try cacheURL(for: url, directoryName: "SubtitlesCache")
     }
 
-    nonisolated private static func cacheURL(for url: URL, directoryName: String) throws -> URL {
+    nonisolated private static func cacheURL(for url: URL, directoryName: String, cacheVariant: String? = nil) throws -> URL {
         let documentsURL = try FileManager.default.url(
             for: .documentDirectory,
             in: .userDomainMask,
@@ -1650,7 +1861,8 @@ final class LanguageRepeaterModel {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
         let modifiedAt = ((attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0).rounded()
-        let fileKey = "\(url.lastPathComponent)-\(size)-\(Int(modifiedAt))"
+        let cacheVariant = cacheVariant.map { "-\($0)" } ?? ""
+        let fileKey = "\(url.lastPathComponent)-\(size)-\(Int(modifiedAt))\(cacheVariant)"
         let safeFileKey = fileKey.map { character in
             character.isLetter || character.isNumber ? character : "-"
         }
@@ -1660,35 +1872,80 @@ final class LanguageRepeaterModel {
         return cacheDirectoryURL.appendingPathComponent("\(safeFileKey).json")
     }
 
-    nonisolated private static func analyzeWaveform(from url: URL) throws -> WaveformAnalysis {
+    nonisolated private static func analyzeWaveformSamples(from url: URL) throws -> [Float] {
         let audioFile = try AVAudioFile(forReading: url)
         let format = audioFile.processingFormat
         let totalFrames = Int(audioFile.length)
         let channels = Int(format.channelCount)
         let sampleRate = format.sampleRate
 
-        guard totalFrames > 0, channels > 0, sampleRate > 0 else {
-            return WaveformAnalysis(waveformSamples: [], decibelSamples: [])
-        }
+        guard totalFrames > 0, channels > 0, sampleRate > 0 else { return [] }
 
         let audioDuration = Double(totalFrames) / sampleRate
-        let targetSamples = min(max(Int(audioDuration * 60), 1_200), 24_000, totalFrames)
-        let windowFrames = max(Int(sampleRate * 0.035), 512)
-        let stepFrames = max(totalFrames / targetSamples, 1)
+        let waveformSampleCount = min(max(Int(audioDuration * 50), 1_200), 18_000, totalFrames)
+        let waveformWindowFrames = max(Int(sampleRate * 0.012), 256)
 
+        return try peakSamples(
+            from: audioFile,
+            sampleCount: waveformSampleCount,
+            windowFrames: waveformWindowFrames,
+            totalFrames: totalFrames,
+            channels: channels,
+            sampleRate: sampleRate
+        )
+    }
+
+    nonisolated private static func analyzeDecibelSamples(
+        from url: URL,
+        windowMilliseconds: Int,
+        maximumDuration: TimeInterval? = nil
+    ) throws -> [DecibelSample] {
+        let audioFile = try AVAudioFile(forReading: url)
+        let format = audioFile.processingFormat
+        let totalFrames = Int(audioFile.length)
+        let channels = Int(format.channelCount)
+        let sampleRate = format.sampleRate
+
+        guard totalFrames > 0, channels > 0, sampleRate > 0 else { return [] }
+
+        let fullDuration = Double(totalFrames) / sampleRate
+        let analysisDuration = min(maximumDuration ?? fullDuration, fullDuration)
+        let analysisFrames = min(max(Int(analysisDuration * sampleRate), 1), totalFrames)
+        let decibelSampleCount = min(max(Int(analysisDuration * 10), 300), 3_000, analysisFrames)
+        let windowSeconds = Double(min(max(windowMilliseconds, 30), 500)) / 1_000
+        let decibelWindowFrames = max(Int(sampleRate * windowSeconds), 512)
+
+        return try decibelSamples(
+            from: audioFile,
+            sampleCount: decibelSampleCount,
+            windowFrames: decibelWindowFrames,
+            totalFrames: analysisFrames,
+            channels: channels,
+            sampleRate: sampleRate
+        )
+    }
+
+    nonisolated private static func peakSamples(
+        from audioFile: AVAudioFile,
+        sampleCount: Int,
+        windowFrames: Int,
+        totalFrames: Int,
+        channels: Int,
+        sampleRate: Double
+    ) throws -> [Float] {
+        let stepFrames = max(totalFrames / sampleCount, 1)
         guard let buffer = AVAudioPCMBuffer(
-            pcmFormat: format,
+            pcmFormat: audioFile.processingFormat,
             frameCapacity: AVAudioFrameCount(windowFrames)
         ) else {
             throw AudioLoadError.cannotCreateBuffer
         }
 
-        var waveformSamples: [Float] = []
-        waveformSamples.reserveCapacity(targetSamples)
-        var decibelSamples: [DecibelSample] = []
-        decibelSamples.reserveCapacity(targetSamples)
+        var samples: [Float] = []
+        samples.reserveCapacity(sampleCount)
 
-        for sampleIndex in 0..<targetSamples {
+        for sampleIndex in 0..<sampleCount {
+            try Task.checkCancellation()
             let framePosition = min(sampleIndex * stepFrames, max(totalFrames - 1, 0))
             audioFile.framePosition = AVAudioFramePosition(framePosition)
             try audioFile.read(into: buffer, frameCount: AVAudioFrameCount(windowFrames))
@@ -1701,32 +1958,71 @@ final class LanguageRepeaterModel {
             guard framesRead > 0 else { continue }
 
             var peak: Float = 0
-            var sumSquares: Double = 0
-            var sampleCount = 0
-
             for frame in 0..<framesRead {
                 var mixedSample: Float = 0
-
                 for channel in 0..<channels {
-                    let sample = channelData[channel][frame]
-                    mixedSample += abs(sample)
-                    sumSquares += Double(sample * sample)
-                    sampleCount += 1
+                    mixedSample += abs(channelData[channel][frame])
                 }
-
                 peak = max(peak, mixedSample / Float(channels))
             }
 
-            waveformSamples.append(min(peak, 1))
-            decibelSamples.append(
+            samples.append(min(peak, 1))
+        }
+
+        return samples
+    }
+
+    nonisolated private static func decibelSamples(
+        from audioFile: AVAudioFile,
+        sampleCount: Int,
+        windowFrames: Int,
+        totalFrames: Int,
+        channels: Int,
+        sampleRate: Double
+    ) throws -> [DecibelSample] {
+        let stepFrames = max(totalFrames / sampleCount, 1)
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: audioFile.processingFormat,
+            frameCapacity: AVAudioFrameCount(windowFrames)
+        ) else {
+            throw AudioLoadError.cannotCreateBuffer
+        }
+
+        var samples: [DecibelSample] = []
+        samples.reserveCapacity(sampleCount)
+
+        for sampleIndex in 0..<sampleCount {
+            try Task.checkCancellation()
+            let framePosition = min(sampleIndex * stepFrames, max(totalFrames - 1, 0))
+            audioFile.framePosition = AVAudioFramePosition(framePosition)
+            try audioFile.read(into: buffer, frameCount: AVAudioFrameCount(windowFrames))
+
+            guard let channelData = buffer.floatChannelData else {
+                throw AudioLoadError.unsupportedAudioFormat
+            }
+
+            let framesRead = Int(buffer.frameLength)
+            guard framesRead > 0 else { continue }
+
+            var sumSquares: Double = 0
+            var measuredSampleCount = 0
+            for frame in 0..<framesRead {
+                for channel in 0..<channels {
+                    let sample = channelData[channel][frame]
+                    sumSquares += Double(sample * sample)
+                    measuredSampleCount += 1
+                }
+            }
+
+            samples.append(
                 DecibelSample(
                     time: TimeInterval(framePosition) / sampleRate,
-                    decibels: decibels(sumSquares: sumSquares, sampleCount: sampleCount)
+                    decibels: decibels(sumSquares: sumSquares, sampleCount: measuredSampleCount)
                 )
             )
         }
 
-        return WaveformAnalysis(waveformSamples: waveformSamples, decibelSamples: decibelSamples)
+        return samples
     }
 
     nonisolated private static func decibels(sumSquares: Double, sampleCount: Int) -> Double {
@@ -1738,11 +2034,11 @@ final class LanguageRepeaterModel {
         guard !amplitudeBySecond.isEmpty else { return }
 
         if let firstSound = amplitudeBySecond.first(where: { $0.decibels > silenceThresholdDB })?.time {
-            loopStart = nearestQuietTime(to: firstSound)
+            loopStart = quietTimeBeforeOrAt(firstSound)
         }
 
         if let lastSound = amplitudeBySecond.last(where: { $0.decibels > silenceThresholdDB })?.time {
-            loopEnd = min(nearestQuietTime(to: lastSound), duration)
+            loopEnd = min(quietTimeAfterOrAt(lastSound), duration)
         }
 
         if loopEnd <= loopStart {
@@ -1751,25 +2047,25 @@ final class LanguageRepeaterModel {
         }
     }
 
-    private func nearestQuietTime(to time: TimeInterval) -> TimeInterval {
-        if let currentSample = amplitudeBySecond.min(by: { abs($0.time - time) < abs($1.time - time) }),
-           currentSample.decibels <= silenceThresholdDB {
-            return time
+    private func quietTimeBeforeOrAt(_ time: TimeInterval) -> TimeInterval {
+        let quietSamples = amplitudeBySecond.filter {
+            $0.time <= time && $0.decibels <= silenceThresholdDB
         }
+        return quietSamples.max(by: { $0.time < $1.time })?.time ?? time
+    }
 
-        let quietSamples = amplitudeBySecond.filter { $0.decibels <= silenceThresholdDB }
-        guard let nearest = quietSamples.min(by: { abs($0.time - time) < abs($1.time - time) }) else {
-            return time
+    private func quietTimeAfterOrAt(_ time: TimeInterval) -> TimeInterval {
+        let quietSamples = amplitudeBySecond.filter {
+            $0.time >= time && $0.decibels <= silenceThresholdDB
         }
-
-        return nearest.time
+        return quietSamples.min(by: { $0.time < $1.time })?.time ?? time
     }
 
     private func startPlaybackMonitor() {
         playbackTask?.cancel()
         playbackTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(60))
+                try? await Task.sleep(for: .milliseconds(16))
                 guard let self, let player = self.player else { return }
 
                 await MainActor.run {
@@ -1777,17 +2073,20 @@ final class LanguageRepeaterModel {
                     self.refreshCurrentSubtitle()
                     self.centerVisibleRange(on: self.currentTime)
 
-                    if self.hasLoopEndMarker && player.currentTime >= self.loopEnd {
-                        guard self.hasLoopStartMarker else {
-                            player.pause()
-                            player.currentTime = self.loopEnd
-                            self.currentTime = self.loopEnd
-                            self.refreshCurrentSubtitle(force: true)
-                            self.isPlaying = false
-                            self.playbackTask?.cancel()
-                            return
-                        }
-
+                    if self.shouldClearEndMarkerAfterPlayback && self.hasLoopEndMarker && player.currentTime >= self.loopEnd {
+                        player.pause()
+                        player.currentTime = self.loopEnd
+                        self.currentTime = self.loopEnd
+                        self.hasLoopEndMarker = false
+                        self.shouldClearEndMarkerAfterPlayback = false
+                        self.completedLoopCount = 0
+                        self.activeLoopHistoryID = nil
+                        self.refreshCurrentSubtitle(force: true)
+                        self.centerVisibleRange(on: self.currentTime)
+                        self.isPlaying = false
+                        self.playbackTask?.cancel()
+                        return
+                    } else if self.hasLoopStartMarker && self.hasLoopEndMarker && player.currentTime >= self.loopEnd {
                         self.completedLoopCount += 1
 
                         if let repeatLimit = self.selectedRepeatOption.repeatLimit,

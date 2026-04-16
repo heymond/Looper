@@ -1,13 +1,13 @@
 //
-//  testUITests.swift
-//  testUITests
+//  LooperUITests.swift
+//  LooperUITests
 //
 //  Created by Jinyoung Kim on 4/13/26.
 //
 
 import XCTest
 
-final class testUITests: XCTestCase {
+final class LooperUITests: XCTestCase {
 
     override func setUpWithError() throws {
         // Put setup code here. This method is called before the invocation of each test method in the class.
