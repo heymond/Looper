@@ -27,11 +27,25 @@
 		B000C7902F8C7FF300D12277 /* Looper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Looper.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B000C79D2F8C7FF400D12277 /* LooperTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LooperTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B000C7A72F8C7FF400D12277 /* LooperUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LooperUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B01453CE2F91CF0F0028263D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; name = Info.plist; path = Looper/Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B01453D12F91D03F0028263D /* Exceptions for "looper" folder in "Looper" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B000C78F2F8C7FF300D12277 /* Looper */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B000C7922F8C7FF300D12277 /* looper */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B01453D12F91D03F0028263D /* Exceptions for "looper" folder in "Looper" target */,
+			);
 			path = looper;
 			sourceTree = "<group>";
 		};
@@ -75,6 +89,7 @@
 		B000C7872F8C7FF300D12277 = {
 			isa = PBXGroup;
 			children = (
+				B01453CE2F91CF0F0028263D /* Info.plist */,
 				B000C7922F8C7FF300D12277 /* looper */,
 				B000C7A02F8C7FF400D12277 /* LooperTests */,
 				B000C7AA2F8C7FF400D12277 /* LooperUITests */,
@@ -398,6 +413,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Looper/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "English subtitles are generated from the selected audio file.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -444,6 +460,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Looper/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "English subtitles are generated from the selected audio file.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;

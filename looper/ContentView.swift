@@ -209,6 +209,12 @@ struct ContentView: View {
                 Text(model.errorMessage ?? "")
             }
         }
+        .onAppear {
+            UIApplication.shared.isIdleTimerDisabled = true
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
     }
 
     private func timeText(_ time: TimeInterval) -> String {
@@ -230,15 +236,49 @@ struct ContentView: View {
     }
 
     private var subtitleView: some View {
-        Text(model.subtitleDisplayText)
-            .font(.headline)
-            .lineLimit(2)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-            .foregroundStyle(model.subtitleDisplayText.isEmpty ? .secondary : .primary)
+        VStack(spacing: 6) {
+            ScrollView(.vertical) {
+                Text(model.subtitleDisplayText)
+                    .font(.headline)
+                    .lineLimit(nil)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .foregroundStyle(model.subtitleDisplayText.isEmpty ? .secondary : .primary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 92, maxHeight: 92)
+
+            if model.hasSubtitleFile {
+                HStack(spacing: 8) {
+                    Text("Subtitle Sync")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+
+                    Button("Earlier") {
+                        model.adjustSubtitleSync(by: 0.1)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+
+                    Button(model.subtitleSyncText) {
+                        model.resetSubtitleSync()
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+
+                    Button("Later") {
+                        model.adjustSubtitleSync(by: -0.1)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .background(.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var silenceControlPanel: some View {
@@ -656,10 +696,7 @@ struct OverviewWaveformView: View {
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
                         let selectedTime = time(for: value.location.x, width: size.width)
-                        model.moveVisibleRangeCenter(to: selectedTime)
-                    }
-                    .onEnded { _ in
-                        model.seekToVisibleCenter()
+                        model.seek(to: selectedTime)
                     }
             )
             .clipped()
@@ -725,6 +762,8 @@ struct OverviewWaveformView: View {
 }
 
 private extension UTType {
+    static let mp3Audio = UTType(filenameExtension: "mp3", conformingTo: .audio) ?? .mp3
+    static let m4aAudio = UTType(filenameExtension: "m4a", conformingTo: .audio) ?? .mpeg4Audio
     static let srtSubtitle = UTType(filenameExtension: "srt", conformingTo: .plainText) ?? .plainText
     static let webVTTSubtitle = UTType(filenameExtension: "vtt", conformingTo: .plainText) ?? .plainText
 }
@@ -736,7 +775,7 @@ struct AudioDocumentPicker: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
         let picker = UIDocumentPickerViewController(
-            forOpeningContentTypes: [.mp3, .mpeg4Audio, .audio, .srtSubtitle, .webVTTSubtitle],
+            forOpeningContentTypes: [.mp3Audio, .m4aAudio, .srtSubtitle, .webVTTSubtitle],
             asCopy: false
         )
         picker.allowsMultipleSelection = true
@@ -846,7 +885,9 @@ final class LanguageRepeaterModel {
     var loopHistory: [LoopHistoryItem] = []
     var activeLoopHistoryID: UUID?
     var subtitleSegments: [SubtitleSegment] = []
+    var currentSubtitleID: UUID?
     var currentSubtitleText = ""
+    var subtitleSyncOffset: TimeInterval = 0
     var hasSubtitleFile = false
     var isPlaying = false
     var isAnalyzingAudio = false
@@ -883,6 +924,10 @@ final class LanguageRepeaterModel {
         }
 
         return hasSubtitleFile ? "" : "No subtitles"
+    }
+
+    var subtitleSyncText: String {
+        String(format: "%+.1fs", subtitleSyncOffset)
     }
 
     var lastOpenedDirectoryURL: URL? {
@@ -1052,7 +1097,9 @@ final class LanguageRepeaterModel {
         amplitudeBySecond = []
         subtitleSegments = []
         pendingSubtitleSegments = []
+        currentSubtitleID = nil
         currentSubtitleText = ""
+        subtitleSyncOffset = 0
         hasSubtitleFile = false
         isAnalyzingAudio = true
         isTranscribingSubtitles = false
@@ -1206,15 +1253,13 @@ final class LanguageRepeaterModel {
     }
 
     private func refreshCurrentSubtitle(force: Bool = false) {
-        if !force,
-           let currentSubtitle = subtitleSegments.first(where: { $0.text == currentSubtitleText }),
-           currentTime <= currentSubtitle.end {
-            return
-        }
+        let subtitleTime = min(max(currentTime + subtitleSyncOffset, 0), duration)
 
-        if let subtitle = subtitleSegments.first(where: { currentTime >= $0.start && currentTime <= $0.end }) {
+        if let subtitle = subtitleSegments.last(where: { subtitleTime >= $0.start && subtitleTime < $0.end }) {
+            currentSubtitleID = subtitle.id
             currentSubtitleText = subtitle.text
         } else {
+            currentSubtitleID = nil
             currentSubtitleText = ""
         }
     }
@@ -1253,14 +1298,17 @@ final class LanguageRepeaterModel {
         }
 
         appendCurrentSubtitle()
-        return subtitles.enumerated().map { index, subtitle in
-            let nextStart = subtitles.indices.contains(index + 1) ? subtitles[index + 1].start : subtitle.end
-            return SubtitleSegment(
-                start: subtitle.start,
-                end: max(subtitle.end, nextStart),
-                text: subtitle.text
-            )
-        }
+        return displayExtendedSubtitles(subtitles)
+    }
+
+    func adjustSubtitleSync(by amount: TimeInterval) {
+        subtitleSyncOffset = min(max(subtitleSyncOffset + amount, -5), 5)
+        refreshCurrentSubtitle(force: true)
+    }
+
+    func resetSubtitleSync() {
+        subtitleSyncOffset = 0
+        refreshCurrentSubtitle(force: true)
     }
 
     func togglePlayback() {
@@ -1273,6 +1321,7 @@ final class LanguageRepeaterModel {
                 player.currentTime = loopStart
                 currentTime = loopStart
             }
+            refreshCurrentSubtitle(force: true)
             centerVisibleRange(on: currentTime)
             player.play()
             completedLoopCount = 0
@@ -1571,7 +1620,10 @@ final class LanguageRepeaterModel {
     private func copySidecarSubtitleIfNeeded(from sourceURL: URL, to audioURL: URL) throws {
         let fileManager = FileManager.default
         let audioDirectoryURL = audioURL.deletingLastPathComponent()
-        guard let sourceSubtitleURL = Self.sidecarSubtitleURL(for: sourceURL) else { return }
+        guard let sourceSubtitleURL = Self.sidecarSubtitleURL(for: sourceURL) else {
+            try removeLocalSidecarSubtitles(for: audioURL)
+            return
+        }
 
         if !fileManager.fileExists(atPath: audioDirectoryURL.path) {
             try fileManager.createDirectory(at: audioDirectoryURL, withIntermediateDirectories: true)
@@ -1581,10 +1633,18 @@ final class LanguageRepeaterModel {
             .deletingPathExtension()
             .appendingPathExtension(sourceSubtitleURL.pathExtension.lowercased())
         guard sourceSubtitleURL.standardizedFileURL.path != destinationSubtitleURL.standardizedFileURL.path else { return }
-        if fileManager.fileExists(atPath: destinationSubtitleURL.path) {
-            try fileManager.removeItem(at: destinationSubtitleURL)
-        }
+        try removeLocalSidecarSubtitles(for: audioURL)
         try fileManager.copyItem(at: sourceSubtitleURL, to: destinationSubtitleURL)
+    }
+
+    private func removeLocalSidecarSubtitles(for audioURL: URL) throws {
+        let fileManager = FileManager.default
+        for fileExtension in ["srt", "vtt"] {
+            let subtitleURL = audioURL.deletingPathExtension().appendingPathExtension(fileExtension)
+            if fileManager.fileExists(atPath: subtitleURL.path) {
+                try fileManager.removeItem(at: subtitleURL)
+            }
+        }
     }
 
     nonisolated private static func loadSidecarSubtitles(for audioURL: URL) throws -> [SubtitleSegment]? {
@@ -1673,7 +1733,20 @@ final class LanguageRepeaterModel {
             }
         }
 
-        return subtitles.sorted { $0.start < $1.start }
+        return displayExtendedSubtitles(subtitles)
+    }
+
+    nonisolated private static func displayExtendedSubtitles(_ subtitles: [SubtitleSegment]) -> [SubtitleSegment] {
+        let sortedSubtitles = subtitles.sorted { $0.start < $1.start }
+        return sortedSubtitles.enumerated().map { index, subtitle in
+            let nextStart = sortedSubtitles.indices.contains(index + 1) ? sortedSubtitles[index + 1].start : subtitle.end
+            return SubtitleSegment(
+                id: subtitle.id,
+                start: subtitle.start,
+                end: max(subtitle.end, nextStart),
+                text: subtitle.text
+            )
+        }
     }
 
     nonisolated private static func subtitleTime(from rawValue: String) -> TimeInterval? {
