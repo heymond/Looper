@@ -31,7 +31,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		B01453D12F91D03F0028263D /* Exceptions for "looper" folder in "Looper" target */ = {
+		B01453D12F91D03F0028263D /* Exceptions for "Looper" folder in "Looper" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -41,10 +41,10 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		B000C7922F8C7FF300D12277 /* looper */ = {
+		B000C7922F8C7FF300D12277 /* Looper */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				B01453D12F91D03F0028263D /* Exceptions for "looper" folder in "Looper" target */,
+				B01453D12F91D03F0028263D /* Exceptions for "Looper" folder in "Looper" target */,
 			);
 			path = Looper;
 			sourceTree = "<group>";
@@ -90,7 +90,7 @@
 			isa = PBXGroup;
 			children = (
 				B01453CE2F91CF0F0028263D /* Info.plist */,
-				B000C7922F8C7FF300D12277 /* looper */,
+				B000C7922F8C7FF300D12277 /* Looper */,
 				B000C7A02F8C7FF400D12277 /* LooperTests */,
 				B000C7AA2F8C7FF400D12277 /* LooperUITests */,
 				B000C7912F8C7FF300D12277 /* Products */,
@@ -123,7 +123,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				B000C7922F8C7FF300D12277 /* looper */,
+				B000C7922F8C7FF300D12277 /* Looper */,
 			);
 			name = Looper;
 			packageProductDependencies = (
