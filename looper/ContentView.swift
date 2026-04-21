@@ -6,6 +6,7 @@
 //
 
 import AVFoundation
+import MediaPlayer
 import Observation
 import Speech
 import SwiftUI
@@ -159,6 +160,12 @@ struct ContentView: View {
 
                 loopHistorySection
                     .frame(maxHeight: .infinity, alignment: .top)
+
+                // 광고가 들어갈 자리 미리 확보 (GIMP로 만든 320x50 이미지를 넣어보세요)
+                Rectangle()
+                    .fill(.secondary.opacity(0.1))
+                    .frame(height: 50)
+                    .overlay(Text("광고 영역").font(.caption2).foregroundStyle(.secondary))
             }
             .padding()
             .overlay(alignment: .topLeading) {
@@ -762,10 +769,10 @@ struct OverviewWaveformView: View {
 }
 
 private extension UTType {
-    static let mp3Audio = UTType(filenameExtension: "mp3", conformingTo: .audio) ?? .mp3
-    static let m4aAudio = UTType(filenameExtension: "m4a", conformingTo: .audio) ?? .mpeg4Audio
-    static let srtSubtitle = UTType(filenameExtension: "srt", conformingTo: .plainText) ?? .plainText
-    static let webVTTSubtitle = UTType(filenameExtension: "vtt", conformingTo: .plainText) ?? .plainText
+    static let mp3Audio = UTType(filenameExtension: "mp3") ?? .mp3
+    static let m4aAudio = UTType(filenameExtension: "m4a") ?? .mpeg4Audio
+    static let srtSubtitle = UTType(filenameExtension: "srt") ?? .plainText
+    static let webVTTSubtitle = UTType(filenameExtension: "vtt") ?? .plainText
 }
 
 struct AudioDocumentPicker: UIViewControllerRepresentable {
@@ -775,7 +782,7 @@ struct AudioDocumentPicker: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
         let picker = UIDocumentPickerViewController(
-            forOpeningContentTypes: [.mp3Audio, .m4aAudio, .srtSubtitle, .webVTTSubtitle],
+            forOpeningContentTypes: [.mp3Audio, .m4aAudio, .srtSubtitle, .webVTTSubtitle, .audio, .plainText, .text],
             asCopy: false
         )
         picker.allowsMultipleSelection = true
@@ -960,7 +967,7 @@ final class LanguageRepeaterModel {
             }
     }
 
-    @ObservationIgnored private var player: AVAudioPlayer?
+    @ObservationIgnored private var player: AVPlayer?
     @ObservationIgnored private var playbackTask: Task<Void, Never>?
     @ObservationIgnored private var analysisTask: Task<Void, Never>?
     @ObservationIgnored private var transcriptionTask: SFSpeechRecognitionTask?
@@ -968,10 +975,37 @@ final class LanguageRepeaterModel {
     @ObservationIgnored private var loadedAudioURL: URL?
     @ObservationIgnored private var amplitudeBySecond: [DecibelSample] = []
     @ObservationIgnored private var shouldClearEndMarkerAfterPlayback = false
+    @ObservationIgnored private var shouldResumeAfterInterruption = false
+    @ObservationIgnored private var isAudioSessionInterrupted = false
+    @ObservationIgnored private var interruptionObserver: NSObjectProtocol?
+    @ObservationIgnored private var routeChangeObserver: NSObjectProtocol?
+    @ObservationIgnored nonisolated(unsafe) private var remoteCommandTargets: [Any] = []
+    @ObservationIgnored private var lastNowPlayingElapsedTime: TimeInterval = -1
     @ObservationIgnored private var didAttemptLastAudioLoad = false
     @ObservationIgnored private let lastAudioPathKey = "lastAudioPath"
     @ObservationIgnored private let lastAudioFileNameKey = "lastAudioFileName"
     @ObservationIgnored private let lastOpenedDirectoryPathKey = "lastOpenedDirectoryPath"
+
+    init() {
+        installAudioSessionObservers()
+        installRemoteCommandHandlers()
+    }
+
+    deinit {
+        playbackTask?.cancel()
+        analysisTask?.cancel()
+        transcriptionTask?.cancel()
+
+        if let interruptionObserver {
+            NotificationCenter.default.removeObserver(interruptionObserver)
+        }
+        if let routeChangeObserver {
+            NotificationCenter.default.removeObserver(routeChangeObserver)
+        }
+
+        removeRemoteCommandHandlers()
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+    }
 
     func importAudio(from result: Result<[URL], Error>) {
         do {
@@ -1072,15 +1106,16 @@ final class LanguageRepeaterModel {
         }
         try configureAudioSession()
 
-        let player = try AVAudioPlayer(contentsOf: localURL)
-        player.prepareToPlay()
+        let playerItem = AVPlayerItem(url: localURL)
+        let player = AVPlayer(playerItem: playerItem)
+        player.audiovisualBackgroundPlaybackPolicy = .continuesIfPossible
         self.player = player
 
         fileName = localURL.lastPathComponent
         loadedAudioURL = localURL
         UserDefaults.standard.set(localURL.path, forKey: lastAudioPathKey)
         UserDefaults.standard.set(localURL.lastPathComponent, forKey: lastAudioFileNameKey)
-        duration = player.duration
+        duration = Self.audioDuration(for: localURL)
         currentTime = 0
         loopStart = 0
         loopEnd = duration
@@ -1103,6 +1138,7 @@ final class LanguageRepeaterModel {
         hasSubtitleFile = false
         isAnalyzingAudio = true
         isTranscribingSubtitles = false
+        updateNowPlayingInfo(force: true)
         if let sidecarSubtitles = try? Self.loadSidecarSubtitles(for: localURL), !sidecarSubtitles.isEmpty {
             subtitleSegments = sidecarSubtitles
             hasSubtitleFile = true
@@ -1312,18 +1348,18 @@ final class LanguageRepeaterModel {
     }
 
     func togglePlayback() {
-        guard let player else { return }
+        guard player != nil else { return }
 
-        if player.isPlaying {
+        if isPlayerPlaying {
             pause()
         } else {
             if hasLoopStartMarker && hasLoopEndMarker && (currentTime < loopStart || currentTime >= loopEnd) {
-                player.currentTime = loopStart
+                seekPlayer(to: loopStart)
                 currentTime = loopStart
             }
             refreshCurrentSubtitle(force: true)
             centerVisibleRange(on: currentTime)
-            player.play()
+            playCurrentAudio()
             completedLoopCount = 0
             isPlaying = true
             startPlaybackMonitor()
@@ -1331,21 +1367,25 @@ final class LanguageRepeaterModel {
     }
 
     func pause() {
+        shouldResumeAfterInterruption = false
         player?.pause()
         isPlaying = false
         playbackTask?.cancel()
+        updateNowPlayingInfo(force: true)
     }
 
     func stop() {
+        shouldResumeAfterInterruption = false
         playbackTask?.cancel()
-        player?.stop()
+        player?.pause()
         let stopTime = preferredStopTime()
-        player?.currentTime = stopTime
+        seekPlayer(to: stopTime)
         currentTime = stopTime
         refreshCurrentSubtitle(force: true)
         centerVisibleRange(on: stopTime)
         completedLoopCount = 0
         isPlaying = false
+        updateNowPlayingInfo(force: true)
     }
 
     private func preferredStopTime() -> TimeInterval {
@@ -1358,10 +1398,11 @@ final class LanguageRepeaterModel {
 
     func seek(to time: TimeInterval) {
         let nextTime = min(max(time, 0), duration)
-        player?.currentTime = nextTime
+        seekPlayer(to: nextTime)
         currentTime = nextTime
         refreshCurrentSubtitle(force: true)
         centerVisibleRange(on: nextTime)
+        updateNowPlayingInfo(force: true)
     }
 
     func seekToVisibleCenter() {
@@ -1370,7 +1411,7 @@ final class LanguageRepeaterModel {
     }
 
     private func synchronizedCurrentTime() -> TimeInterval {
-        let nextTime = min(max(player?.currentTime ?? currentTime, 0), duration)
+        let nextTime = min(max(currentPlayerTime(), 0), duration)
         currentTime = nextTime
         return nextTime
     }
@@ -1418,7 +1459,7 @@ final class LanguageRepeaterModel {
     }
 
     func playLoopHistory(_ item: LoopHistoryItem) {
-        guard let player else { return }
+        guard player != nil else { return }
         loopStart = item.start
         loopEnd = item.end
         hasLoopStartMarker = true
@@ -1426,11 +1467,11 @@ final class LanguageRepeaterModel {
         shouldClearEndMarkerAfterPlayback = false
         activeLoopHistoryID = item.id
         completedLoopCount = 0
-        player.currentTime = item.start
+        seekPlayer(to: item.start)
         currentTime = item.start
         refreshCurrentSubtitle(force: true)
         centerVisibleRange(on: item.start)
-        player.play()
+        playCurrentAudio()
         isPlaying = true
         startPlaybackMonitor()
     }
@@ -1554,8 +1595,175 @@ final class LanguageRepeaterModel {
 
     private func configureAudioSession() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .spokenAudio)
+        try session.setCategory(.playback, mode: .default, policy: .longFormAudio)
         try session.setActive(true)
+    }
+
+    private func installRemoteCommandHandlers() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+        commandCenter.playCommand.isEnabled = true
+        commandCenter.pauseCommand.isEnabled = true
+        commandCenter.stopCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+
+        remoteCommandTargets = [
+            commandCenter.playCommand.addTarget { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self, !self.isPlayerPlaying else { return }
+                    self.togglePlayback()
+                }
+                return .success
+            },
+            commandCenter.pauseCommand.addTarget { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.pause()
+                }
+                return .success
+            },
+            commandCenter.stopCommand.addTarget { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.stop()
+                }
+                return .success
+            },
+            commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.togglePlayback()
+                }
+                return .success
+            }
+        ]
+    }
+
+    nonisolated private func removeRemoteCommandHandlers() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+        let commands = [
+            commandCenter.playCommand,
+            commandCenter.pauseCommand,
+            commandCenter.stopCommand,
+            commandCenter.togglePlayPauseCommand
+        ]
+
+        for (command, target) in zip(commands, remoteCommandTargets) {
+            command.removeTarget(target)
+        }
+        remoteCommandTargets = []
+    }
+
+    private func installAudioSessionObservers() {
+        let center = NotificationCenter.default
+        interruptionObserver = center.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            Task { @MainActor [weak self] in
+                self?.handleAudioSessionInterruption(typeValue: typeValue)
+            }
+        }
+
+        routeChangeObserver = center.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.handleAudioRouteChange()
+            }
+        }
+    }
+
+    private func handleAudioSessionInterruption(typeValue: UInt?) {
+        guard let typeValue,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+
+        switch type {
+        case .began:
+            isAudioSessionInterrupted = true
+            shouldResumeAfterInterruption = isPlaying
+            playbackTask?.cancel()
+        case .ended:
+            isAudioSessionInterrupted = false
+            try? AVAudioSession.sharedInstance().setActive(true)
+
+            guard shouldResumeAfterInterruption else { return }
+            shouldResumeAfterInterruption = false
+            resumePlaybackAfterAudioSessionEvent()
+        @unknown default:
+            break
+        }
+    }
+
+    private func handleAudioRouteChange() {
+        guard !isAudioSessionInterrupted, isPlaying else { return }
+        try? AVAudioSession.sharedInstance().setActive(true)
+
+        if player != nil && !isPlayerPlaying {
+            resumePlaybackAfterAudioSessionEvent()
+        }
+    }
+
+    private func resumePlaybackAfterAudioSessionEvent() {
+        guard player != nil, !hasReachedPlaybackEnd(currentPlayerTime()) else {
+            isPlaying = false
+            updateNowPlayingInfo(force: true)
+            return
+        }
+
+        playCurrentAudio()
+        isPlaying = true
+        startPlaybackMonitor()
+    }
+
+    @discardableResult
+    private func playCurrentAudio() -> Bool {
+        try? AVAudioSession.sharedInstance().setActive(true)
+        player?.play()
+        updateNowPlayingInfo(force: true)
+        return player != nil
+    }
+
+    private func hasReachedPlaybackEnd(_ time: TimeInterval) -> Bool {
+        let playbackEnd = hasLoopStartMarker && hasLoopEndMarker ? loopEnd : duration
+        return playbackEnd > 0 && time >= playbackEnd - 0.05
+    }
+
+    private var isPlayerPlaying: Bool {
+        guard let player else { return false }
+        return player.rate != 0 || player.timeControlStatus == .playing
+    }
+
+    private func currentPlayerTime() -> TimeInterval {
+        guard let seconds = player?.currentTime().seconds, seconds.isFinite else {
+            return currentTime
+        }
+        return seconds
+    }
+
+    private func seekPlayer(to time: TimeInterval) {
+        let cmTime = CMTime(seconds: min(max(time, 0), duration), preferredTimescale: 600)
+        player?.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    private func updateNowPlayingInfo(force: Bool = false) {
+        guard loadedAudioURL != nil else {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            return
+        }
+
+        let elapsedTime = min(max(currentTime, 0), duration)
+        guard force || abs(elapsedTime - lastNowPlayingElapsedTime) >= 1 else { return }
+        lastNowPlayingElapsedTime = elapsedTime
+
+        MPNowPlayingInfoCenter.default().playbackState = isPlayerPlaying ? .playing : .paused
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = [
+            MPMediaItemPropertyTitle: fileName,
+            MPMediaItemPropertyPlaybackDuration: duration,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsedTime,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlayerPlaying ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0
+        ]
     }
 
     private func localAudioURL(for sourceURL: URL) throws -> URL {
@@ -1589,6 +1797,13 @@ final class LanguageRepeaterModel {
 
     nonisolated private static func isAudioFile(_ url: URL) -> Bool {
         ["mp3", "m4a"].contains(url.pathExtension.lowercased())
+    }
+
+    nonisolated private static func audioDuration(for url: URL) -> TimeInterval {
+        guard let audioFile = try? AVAudioFile(forReading: url) else { return 0 }
+        let sampleRate = audioFile.processingFormat.sampleRate
+        guard sampleRate > 0 else { return 0 }
+        return max(Double(audioFile.length) / sampleRate, 0)
     }
 
     nonisolated private static func isSubtitleFile(_ url: URL) -> Bool {
@@ -1655,9 +1870,19 @@ final class LanguageRepeaterModel {
     }
 
     nonisolated private static func sidecarSubtitleURL(for audioURL: URL) -> URL? {
+        let fileManager = FileManager.default
+        let baseURL = audioURL.deletingPathExtension()
+
+        for fileExtension in ["srt", "vtt"] {
+            let subtitleURL = baseURL.appendingPathExtension(fileExtension)
+            if fileManager.fileExists(atPath: subtitleURL.path) {
+                return subtitleURL
+            }
+        }
+
         let directoryURL = audioURL.deletingLastPathComponent()
-        let baseName = audioURL.deletingPathExtension().lastPathComponent.lowercased()
-        guard let urls = try? FileManager.default.contentsOfDirectory(
+        let baseName = baseURL.lastPathComponent.lowercased()
+        guard let urls = try? fileManager.contentsOfDirectory(
             at: directoryURL,
             includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles]
@@ -1667,7 +1892,7 @@ final class LanguageRepeaterModel {
 
         return urls.first { url in
             let extensionName = url.pathExtension.lowercased()
-            return ["vtt", "srt"].contains(extensionName)
+            return ["srt", "vtt"].contains(extensionName)
                 && url.deletingPathExtension().lastPathComponent.lowercased() == baseName
         }
     }
@@ -2136,56 +2361,58 @@ final class LanguageRepeaterModel {
 
     private func startPlaybackMonitor() {
         playbackTask?.cancel()
-        playbackTask = Task { [weak self] in
+        playbackTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(16))
-                guard let self, let player = self.player else { return }
+                guard let self, self.player != nil else { return }
 
-                await MainActor.run {
-                    self.currentTime = player.currentTime
-                    self.refreshCurrentSubtitle()
+                self.currentTime = self.currentPlayerTime()
+                self.refreshCurrentSubtitle()
+                self.centerVisibleRange(on: self.currentTime)
+                self.updateNowPlayingInfo()
+
+                if self.shouldClearEndMarkerAfterPlayback && self.hasLoopEndMarker && self.currentTime >= self.loopEnd {
+                    self.player?.pause()
+                    self.seekPlayer(to: self.loopEnd)
+                    self.currentTime = self.loopEnd
+                    self.hasLoopEndMarker = false
+                    self.shouldClearEndMarkerAfterPlayback = false
+                    self.completedLoopCount = 0
+                    self.activeLoopHistoryID = nil
+                    self.refreshCurrentSubtitle(force: true)
                     self.centerVisibleRange(on: self.currentTime)
+                    self.isPlaying = false
+                    self.updateNowPlayingInfo(force: true)
+                    self.playbackTask?.cancel()
+                    return
+                } else if self.hasLoopStartMarker && self.hasLoopEndMarker && self.currentTime >= self.loopEnd {
+                    self.completedLoopCount += 1
 
-                    if self.shouldClearEndMarkerAfterPlayback && self.hasLoopEndMarker && player.currentTime >= self.loopEnd {
-                        player.pause()
-                        player.currentTime = self.loopEnd
+                    if let repeatLimit = self.selectedRepeatOption.repeatLimit,
+                       self.completedLoopCount >= repeatLimit {
+                        self.player?.pause()
+                        self.seekPlayer(to: self.loopEnd)
                         self.currentTime = self.loopEnd
-                        self.hasLoopEndMarker = false
-                        self.shouldClearEndMarkerAfterPlayback = false
-                        self.completedLoopCount = 0
-                        self.activeLoopHistoryID = nil
                         self.refreshCurrentSubtitle(force: true)
-                        self.centerVisibleRange(on: self.currentTime)
                         self.isPlaying = false
+                        self.updateNowPlayingInfo(force: true)
                         self.playbackTask?.cancel()
                         return
-                    } else if self.hasLoopStartMarker && self.hasLoopEndMarker && player.currentTime >= self.loopEnd {
-                        self.completedLoopCount += 1
-
-                        if let repeatLimit = self.selectedRepeatOption.repeatLimit,
-                           self.completedLoopCount >= repeatLimit {
-                            player.pause()
-                            player.currentTime = self.loopEnd
-                            self.currentTime = self.loopEnd
-                            self.refreshCurrentSubtitle(force: true)
-                            self.isPlaying = false
-                            self.playbackTask?.cancel()
-                            return
-                        }
-
-                        player.currentTime = self.loopStart
-                        self.currentTime = self.loopStart
-                        self.refreshCurrentSubtitle(force: true)
-                        self.centerVisibleRange(on: self.currentTime)
-
-                        if self.isPlaying {
-                            player.play()
-                        }
                     }
 
-                    if !player.isPlaying && self.isPlaying {
-                        self.isPlaying = false
+                    self.seekPlayer(to: self.loopStart)
+                    self.currentTime = self.loopStart
+                    self.refreshCurrentSubtitle(force: true)
+                    self.centerVisibleRange(on: self.currentTime)
+
+                    if self.isPlaying {
+                        self.playCurrentAudio()
                     }
+                }
+
+                if !self.isPlayerPlaying && self.isPlaying {
+                    self.isPlaying = false
+                    self.updateNowPlayingInfo(force: true)
                 }
             }
         }

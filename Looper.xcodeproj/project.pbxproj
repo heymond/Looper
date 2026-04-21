@@ -46,7 +46,7 @@
 			exceptions = (
 				B01453D12F91D03F0028263D /* Exceptions for "looper" folder in "Looper" target */,
 			);
-			path = looper;
+			path = Looper;
 			sourceTree = "<group>";
 		};
 		B000C7A02F8C7FF400D12277 /* LooperTests */ = {
