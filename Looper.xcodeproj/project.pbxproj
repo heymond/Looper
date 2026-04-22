@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B0E28D202F9868E50083A5EA /* GoogleMobileAds in Frameworks */ = {isa = PBXBuildFile; productRef = B0E28D1F2F9868E50083A5EA /* GoogleMobileAds */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		B000C79E2F8C7FF400D12277 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -66,6 +70,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B0E28D202F9868E50083A5EA /* GoogleMobileAds in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -93,6 +98,7 @@
 				B000C7922F8C7FF300D12277 /* Looper */,
 				B000C7A02F8C7FF400D12277 /* LooperTests */,
 				B000C7AA2F8C7FF400D12277 /* LooperUITests */,
+				B0E28D1E2F9868E50083A5EA /* Frameworks */,
 				B000C7912F8C7FF300D12277 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -105,6 +111,13 @@
 				B000C7A72F8C7FF400D12277 /* LooperUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B0E28D1E2F9868E50083A5EA /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -127,6 +140,7 @@
 			);
 			name = Looper;
 			packageProductDependencies = (
+				B0E28D1F2F9868E50083A5EA /* GoogleMobileAds */,
 			);
 			productName = test;
 			productReference = B000C7902F8C7FF300D12277 /* Looper.app */;
@@ -210,6 +224,9 @@
 			);
 			mainGroup = B000C7872F8C7FF300D12277;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B0E28D1D2F985BF00083A5EA /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B000C7912F8C7FF300D12277 /* Products */;
 			projectDirPath = "";
@@ -414,7 +431,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Looper/Info.plist;
-				INFOPLIST_KEY_LSApplicationCategoryType = "";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "English subtitles are generated from the selected audio file.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -461,7 +478,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Looper/Info.plist;
-				INFOPLIST_KEY_LSApplicationCategoryType = "";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "English subtitles are generated from the selected audio file.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -636,6 +653,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B0E28D1D2F985BF00083A5EA /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/googleads/swift-package-manager-google-mobile-ads.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 13.2.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B0E28D1F2F9868E50083A5EA /* GoogleMobileAds */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B0E28D1D2F985BF00083A5EA /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */;
+			productName = GoogleMobileAds;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = B000C7882F8C7FF300D12277 /* Project object */;
 }

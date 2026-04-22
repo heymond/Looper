@@ -10,6 +10,7 @@ import MediaPlayer
 import Observation
 import Speech
 import SwiftUI
+import GoogleMobileAds // 👈 이 줄을 반드시 추가해야 합니다!
 import UIKit
 import UniformTypeIdentifiers
 
@@ -34,14 +35,14 @@ struct ContentView: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.primary)
-
+                            
                             Spacer()
-
+                            
                             VStack(alignment: .trailing, spacing: 2) {
                                 Text("Current \(model.currentDecibelText)")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
-
+                                
                                 Button {
                                     isSilenceControlPresented.toggle()
                                 } label: {
@@ -56,18 +57,18 @@ struct ContentView: View {
                                         .presentationCompactAdaptation(.popover)
                                 }
                             }
-
+                            
                             if model.isAnalyzingAudio {
                                 ProgressView()
                             }
                         }
                     }
                     .zIndex(10)
-
+                    
                     VStack(spacing: 0) {
                         WaveformView(model: model)
                             .frame(height: 150)
-
+                        
                         OverviewWaveformView(model: model)
                             .frame(height: 50)
                             .background(.white.opacity(0.1))
@@ -75,44 +76,44 @@ struct ContentView: View {
                     .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .zIndex(0)
-
+                    
                     HStack {
                         Text("Playing: \(timeText(model.currentTime))/\(timeText(model.duration))")
                             .font(.caption)
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
-
+                        
                         Spacer()
-
+                        
                         Button("Default") {
                             model.resetToDefaultZoom()
                         }
                         .font(.caption)
                         .disabled(!model.hasAudio)
                     }
-
+                    
                     subtitleView
                 }
-
-
+                
+                
                 VStack(spacing: 12) {
                     HStack {
                         Spacer()
-
+                        
                         HStack(spacing: 10) {
                             Button("A") {
                                 model.toggleStartMarkerAtCurrentTime()
                             }
                             .buttonStyle(.bordered)
                             .tint(model.hasLoopStartMarker ? .blue : .gray)
-
+                            
                             Button("B") {
                                 model.toggleEndMarkerAtCurrentTime()
                             }
                             .buttonStyle(.bordered)
                             .tint(model.hasLoopEndMarker ? .red : .gray)
                             .disabled(!model.hasLoopStartMarker)
-
+                            
                             Button {
                                 model.clearLoopMarkers()
                             } label: {
@@ -123,9 +124,9 @@ struct ContentView: View {
                             .tint(.gray)
                             .disabled(!model.hasLoopStartMarker && !model.hasLoopEndMarker)
                         }
-
+                        
                         Spacer()
-
+                        
                         HStack(spacing: 6) {
                             repeatCountButton(.three)
                             repeatCountButton(.five)
@@ -135,7 +136,7 @@ struct ContentView: View {
                     }
                     .disabled(!model.hasAudio)
                 }
-
+                
                 HStack(spacing: 14) {
                     Button {
                         model.togglePlayback()
@@ -145,7 +146,7 @@ struct ContentView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(!model.hasAudio)
-
+                    
                     Button {
                         model.stop()
                     } label: {
@@ -157,15 +158,15 @@ struct ContentView: View {
                     .disabled(!model.hasAudio)
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
-
+                
                 loopHistorySection
                     .frame(maxHeight: .infinity, alignment: .top)
-
-                // 광고가 들어갈 자리 미리 확보 (GIMP로 만든 320x50 이미지를 넣어보세요)
-                Rectangle()
-                    .fill(.secondary.opacity(0.1))
-                    .frame(height: 50)
-                    .overlay(Text("광고 영역").font(.caption2).foregroundStyle(.secondary))
+                
+//                광고가 들어갈 자리 미리 확보 (GIMP로 만든 320x50 이미지를 넣어보세요)
+//                AdBannerView()
+//                    .frame(maxWidth: .infinity) // 가로는 꽉 채우고
+//                    .frame(height: 60)          // 높이는 가변 대응을 위해 약간 여유 있게
+                
             }
             .padding()
             .overlay(alignment: .topLeading) {
@@ -463,6 +464,78 @@ struct ContentView: View {
         .tint(model.selectedRepeatOption == option ? .red : .gray)
     }
 }
+
+// ... ContentView의 코드들이 끝난 지점 ...
+
+// 여기에 삽입
+//struct AdBannerView: UIViewControllerRepresentable {
+//    func makeUIViewController(context: Context) -> UIViewController {
+//        let viewController = UIViewController()
+//        let bannerView = BannerView(adSize: AdSizeBanner)
+//        
+//        // 여기에 실제 발급받은 ID를 넣으신 상태여야 합니다.
+//        bannerView.adUnitID = "ca-app-pub-3940256099942544/2934735716"
+//        
+//        bannerView.rootViewController = viewController
+//        viewController.view.addSubview(bannerView)
+//        bannerView.load(Request())
+//        return viewController
+//    }
+//    
+//    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+//}
+
+
+struct AdBannerView: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> BannerAdViewController {
+        BannerAdViewController()
+    }
+    
+    func updateUIViewController(_ uiViewController: BannerAdViewController, context: Context) {
+        uiViewController.reloadBannerIfNeeded()
+    }
+    
+    final class BannerAdViewController: UIViewController {
+        private var bannerView: BannerView?
+        private var currentWidth: CGFloat = 0
+        
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            reloadBannerIfNeeded()
+        }
+        
+        func reloadBannerIfNeeded() {
+            let screenWidth = view.window?.windowScene?.screen.bounds.width
+            let viewWidth = view.bounds.width > 0 ? view.bounds.width : (screenWidth ?? 320)
+            guard viewWidth > 0, abs(viewWidth - currentWidth) > 0.5 else { return }
+            currentWidth = viewWidth
+            
+            bannerView?.removeFromSuperview()
+            
+            let adSize = adSizeFor(cgSize: CGSize(width: viewWidth, height: 50))
+            let bannerView = BannerView(adSize: adSize)
+            
+            bannerView.adUnitID = "ca-app-pub-3940256099942544/2435281174"
+            bannerView.rootViewController = self
+            view.addSubview(bannerView)
+            
+            bannerView.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                bannerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                bannerView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                bannerView.widthAnchor.constraint(equalToConstant: viewWidth)
+            ])
+            
+            bannerView.load(Request())
+            self.bannerView = bannerView
+        }
+    }
+}
+
+
+
+
+
 
 struct WaveformView: View {
     @Bindable var model: LanguageRepeaterModel
