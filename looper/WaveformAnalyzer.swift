@@ -7,7 +7,7 @@ import AVFoundation
 import Foundation
 
 enum WaveformAnalyzer {
-    static func analyzeWaveformSamples(from url: URL) throws -> [Float] {
+    nonisolated static func analyzeWaveformSamples(from url: URL) throws -> [Float] {
         let audioFile = try AVAudioFile(forReading: url)
         let format = audioFile.processingFormat
         let totalFrames = Int(audioFile.length)
@@ -30,7 +30,7 @@ enum WaveformAnalyzer {
         )
     }
 
-    static func analyzeDecibelSamples(
+    nonisolated static func analyzeDecibelSamples(
         from url: URL,
         windowMilliseconds: Int,
         maximumDuration: TimeInterval? = nil
@@ -60,7 +60,7 @@ enum WaveformAnalyzer {
         )
     }
 
-    private static func peakSamples(
+    nonisolated private static func peakSamples(
         from audioFile: AVAudioFile,
         sampleCount: Int,
         windowFrames: Int,
@@ -107,7 +107,7 @@ enum WaveformAnalyzer {
         return samples
     }
 
-    private static func decibelSamples(
+    nonisolated private static func decibelSamples(
         from audioFile: AVAudioFile,
         sampleCount: Int,
         windowFrames: Int,
@@ -160,7 +160,7 @@ enum WaveformAnalyzer {
         return samples
     }
 
-    private static func decibels(sumSquares: Double, sampleCount: Int) -> Double {
+    nonisolated private static func decibels(sumSquares: Double, sampleCount: Int) -> Double {
         let rms = sqrt(sumSquares / Double(max(sampleCount, 1)))
         return rms > 0 ? 20 * log10(rms) : -100
     }
